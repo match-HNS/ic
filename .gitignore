@@ -1,0 +1,8 @@
+*.amxx
+*.amx
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.bak
+*.tmp
