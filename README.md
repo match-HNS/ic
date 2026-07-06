@@ -1,5 +1,11 @@
 <div align="center">
 
+**服务器需维护者可联系 LINNA**
+
+WeChat: 19391496561 | Telegram: @19391496561
+
+</div>
+
 # GTRHNS - Hide'n'Seek Match System
 
 **CS 1.6 捉迷藏比赛管理系统**
@@ -299,6 +305,12 @@ configs/
 ---
 
 <div align="center">
+
+**服务器需维护者可联系 LINNA**
+
+WeChat: 19391496561 | Telegram: @19391496561
+
+</div>
 
 **GTRHNS** — Built with passion for the HNS community.
 
