@@ -138,7 +138,7 @@ public plugin_precache() {
 }
 
 public plugin_init() {
-	register_plugin("Match: Maps", "4.0.4", "LINNA");
+	register_plugin("Match: Maps", "4.0.4", "OpenHNS");
 
 	RegisterSayCmd("map", "maps", "cmdMapsMenu", 0, "Open mapmenu");
 	RegisterSayCmd("amx_mapmenu", "amx_mapsmenu", "cmdMapsMenu", 0, "Open mapmenu");

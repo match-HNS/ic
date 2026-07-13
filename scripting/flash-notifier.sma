@@ -10,7 +10,7 @@ new g_iCvarFlashSpec;
 new bool:g_isSpecFlashed[MAX_PLAYERS + 1]; // Костыль для костыля
 
 public plugin_init() {
-	register_plugin("HNS Flash Notifier", "1.1.0", "LINNA"); // Juice, WessTorn, ufame
+	register_plugin("HNS Flash Notifier", "1.1.0", "OpenHNS"); // Juice, WessTorn, ufame
 
 	bind_pcvar_num(register_cvar("flash_spec", "1"), g_iCvarFlashSpec);
 	

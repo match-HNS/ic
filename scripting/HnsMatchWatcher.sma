@@ -32,7 +32,7 @@ public plugin_natives() {
 }
 
 public plugin_init() {
-	register_plugin("Match: Watcher", "4.0.4", "LINNA"); // Garey
+	register_plugin("Match: Watcher", "4.0.4", "OpenHNS"); // Garey
 
 	RegisterSayCmd("rnw", "rocknewwatcher", "cmdRnw", 0, "Rock new watchers");
 	RegisterSayCmd("unrnw", "nornw", "cmdUnRnw", 0, "Cancel vote new watchers");

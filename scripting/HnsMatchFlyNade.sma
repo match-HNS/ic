@@ -1,7 +1,7 @@
 // ============================================
 // HnsMatchSystem - Fly Grenade (Teleport Nade)
 // Version: 3.5.0
-// Author: LINNA
+// Author: LINNA (Original) / OpenHNS (Integrated)
 // Description: Last CT gets a fly grenade for teleportation
 // ============================================
 
@@ -42,7 +42,7 @@ new bool:g_bIsBoostMap = false;
 // Plugin Init
 // ============================================
 public plugin_init() {
-    register_plugin("HNS Match Fly Nade", "4.0.4", "LINNA");
+    register_plugin("HNS Match Fly Nade", "4.0.4", "LINNA / OpenHNS");
     
     // ReAPI hooks
     RegisterHookChain(RG_CBasePlayer_Spawn, "fw_PlayerSpawn", true);

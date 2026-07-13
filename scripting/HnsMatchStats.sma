@@ -63,7 +63,7 @@ new g_hApplyStatsForward;
 new g_hSaveLeaveForward;
 
 public plugin_init() {
-	register_plugin("Match: Stats", "4.0.4", "LINNA"); // Garey
+	register_plugin("Match: Stats", "4.0.4", "OpenHNS"); // Garey
 
 	RegisterSayCmd("tes", "aas", "cmdTest", 0, "Test");
 

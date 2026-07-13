@@ -14,7 +14,7 @@
 
 #define PLUGIN_NAME "HNS Match Mode HUD"
 #define PLUGIN_VERSION "1.0.0"
-#define PLUGIN_AUTHOR "LINNA"
+#define PLUGIN_AUTHOR "OpenHNS"
 
 new g_iHudTask;
 

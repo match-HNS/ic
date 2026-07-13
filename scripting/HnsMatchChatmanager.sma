@@ -7,7 +7,7 @@
 
 #define PLUGIN "Match: ChatManager"
 #define VERSION "1.1"
-#define AUTHOR "Mistrick, LINNA"
+#define AUTHOR "Mistrick, OpenHNS"
 
 #define rg_get_user_team(%0) get_user_team(%0)
 
@@ -73,7 +73,7 @@ new const g_TextChannels[][] = {
 new g_SayText;
 new g_sMessage[173];
 
-new const FILE_PREFIXES[] = "gtrhns-prefixes.ini";
+new const FILE_PREFIXES[] = "openhns-prefixes.ini";
 
 new g_bCustomPrefix[33], g_sPlayerPrefix[33][32];
 new Trie:g_tSteamPrefixes, g_iTrieSteamSize;

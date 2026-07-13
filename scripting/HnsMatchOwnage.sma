@@ -14,8 +14,8 @@ new Float:g_flLastHeadTouch[MAX_PLAYERS + 1];
 new g_hForwardOwnage;
 
 new const g_szSound[][] = {
-	"gtrhns/mario.wav",
-	"gtrhns/ownage.wav"
+	"openhns/mario.wav",
+	"openhns/ownage.wav"
 };
 
 public plugin_precache() {
@@ -28,7 +28,7 @@ public plugin_natives() {
 }
 
 public plugin_init() {
-	register_plugin("Match: Ownage", "4.0.4", "LINNA");
+	register_plugin("Match: Ownage", "4.0.4", "OpenHNS");
 	
 	register_touch("player", "player", "touchPlayer");
 

@@ -162,7 +162,7 @@ public plugin_cfg() {
 }
 
 public plugin_init() {
-	register_plugin("Match: Database MySQL", "4.0.4", "LINNA"); // Garey
+	register_plugin("Match: Database MySQL", "4.0.4", "OpenHNS"); // Garey
 
 	new pCvar;
 	pCvar = create_cvar("hns_host", "127.0.0.1", FCVAR_PROTECTED, "Host");

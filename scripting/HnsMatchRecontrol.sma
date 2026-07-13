@@ -56,7 +56,7 @@ public plugin_natives() {
 
 public plugin_init()
 {
-	register_plugin("Match: ReControl", "4.0.4", "LINNA"); // Thanks Conor, Denzer, Garey
+	register_plugin("Match: ReControl", "4.0.4", "OpenHNS"); // Thanks Conor, Denzer, Garey
 
 	// TODO: Сделать кваром
 	if (!hns_api_stats_init()) {

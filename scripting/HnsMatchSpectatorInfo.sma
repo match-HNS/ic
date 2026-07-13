@@ -17,7 +17,7 @@ public plugin_natives() {
 }
 
 public plugin_init() {
-	register_plugin("Match: Spectator Info", "4.0.4", "LINNA");
+	register_plugin("Match: Spectator Info", "4.0.4", "OpenHNS");
 
 	g_iHudSync = CreateHudSyncObj();
 

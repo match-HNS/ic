@@ -7,7 +7,7 @@ new g_szMapName[32];
 new g_sPrefix[24];
 
 public plugin_init() {
-    register_plugin("Kill Piranesi", "4.0.4", "LINNA") // hedqi
+    register_plugin("Kill Piranesi", "4.0.4", "OpenHNS") // hedqi
 
     rh_get_mapname(g_szMapName, charsmax(g_szMapName));
 
