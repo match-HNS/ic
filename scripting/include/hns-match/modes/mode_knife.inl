@@ -245,7 +245,7 @@ public kniferound_roundend(bool:win_ct) {
 		Save_players(win_ct ? TEAM_CT : TEAM_TERRORIST);
 
 		if (!hns_cup_enabled()) {
-			// ★ 已移除: StartVoteRules - 菜单大整改后不再使用投票规则菜单
+			StartVoteRules();
 		}
 	} else if (g_iMatchStatus == MATCH_CUPKNIFE) {
 		training_start();

@@ -17,7 +17,7 @@ public plugin_cfg() {
 	if (!dir_exists(g_szLogPath))
 		mkdir(g_szLogPath);
 
-	// ★ 已移除: autoStartPendingMode - 功能已由 AI 状态机接管
+	// ★ autoStartPendingMode 已移除，功能由 AI 状态机接管
 
 	// FPS优化: 延迟强制设置sys_ticrate, 确保在所有cfg执行完后生效, 换图不丢失
 	set_task(5.0, "taskForceTicrate");
@@ -245,10 +245,6 @@ public NATCH_RULES:native_get_rules(amxx, params) {
 }
 
 public fwdEmitSoundPre(id, iChannel, szSample[], Float:volume, Float:attenuation, fFlags, pitch) {
-	if (equal(szSample, "weapons/knife_deploy1.wav")) {
-		return FMRES_SUPERCEDE;
-	}
-
 	if (is_user_alive(id) && getUserTeam(id) == TEAM_TERRORIST && equal(szSample, sndDenySelect)) {
 		emit_sound(id, iChannel, sndUseSound, volume, attenuation, fFlags, pitch);
 		return FMRES_SUPERCEDE;
@@ -925,8 +921,8 @@ public mainMenuHandler(id, key) {
 		showMapMenu(id);
 	} else if (key == 6) {                        // Key 7: 数据统计
 		showStatsMenu(id);
-	} else if (key == 7) {                        // Key 8: 个人设置
-		showPersonalMenu(id);
+	} else if (key == 7) {                        // Key 8: 显示设置
+		showDisplayMenu(id);
 	} else if (key == 8) {                        // Key 9: 管理工具
 		if (isUserWatcher(id) || is_user_admin(id))
 			showAdminMenu(id);
