@@ -13,7 +13,7 @@ WeChat: 19391496561 | Telegram: @19391496561
 
 [![AMX Mod X](https://img.shields.io/badge/AMX_Mod_X-1.8.3+-blue)]()
 [![ReGameDLL](https://img.shields.io/badge/ReGameDLL-5.x-orange)]()
-[![Version](https://img.shields.io/badge/Version-1.0.0-green)]()
+[![Version](https://img.shields.io/badge/Version-1.0.1-green)]()
 [![License](https://img.shields.io/badge/License-MIT-success)]()
 
 </div>
