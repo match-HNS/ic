@@ -21,7 +21,6 @@
 #define MAX_NAME_LEN     32
 #define MAX_REASON_LEN   128
 #define ADMIN_PASSWORD   "890514"
-#define PERM_STORAGE_VERSION 2
 
 // ============================================================
 //  И«ѕЦ±дБї
@@ -71,35 +70,12 @@ stock perm_apply_user_flags(id)
         return;
     }
 
-    new iFlags = get_user_flags(id);
-
     switch (g_iPermLevel[id]) {
-        case PERM_OWNER: set_user_flags(id, iFlags | read_flags("abcdefghijklmn"));
-        case PERM_ADMIN: set_user_flags(id, iFlags | read_flags("defi"));
-        case PERM_VIP:   set_user_flags(id, iFlags | read_flags("b"));
-        case PERM_TEMP:  set_user_flags(id, iFlags | read_flags("fi"));
-        default:         set_user_flags(id, iFlags);
-    }
-}
-
-stock perm_level_from_flags(iFlags)
-{
-    if (iFlags & read_flags("m")) return PERM_OWNER;
-    if (iFlags & read_flags("d")) return PERM_ADMIN;
-    if (iFlags & read_flags("b")) return PERM_VIP;
-    if (iFlags & read_flags("f")) return PERM_TEMP;
-    return PERM_NONE;
-}
-
-stock perm_sync_level_from_flags(id)
-{
-    if (!is_user_connected(id)) {
-        return;
-    }
-
-    new iDetectedLevel = perm_level_from_flags(get_user_flags(id));
-    if (iDetectedLevel > g_iPermLevel[id]) {
-        g_iPermLevel[id] = iDetectedLevel;
+        case PERM_OWNER: { set_user_flags(id, read_flags("abcdefghijklmn")); break; }
+        case PERM_ADMIN: { set_user_flags(id, read_flags("defi")); break; }
+        case PERM_VIP:   { set_user_flags(id, read_flags("b")); break; }
+        case PERM_TEMP:  { set_user_flags(id, read_flags("fi")); break; }
+        default:         set_user_flags(id, 0);
     }
 }
 
@@ -116,7 +92,8 @@ public plugin_init()
     register_clcmd("say /hide", "cmdToggleHide");
     register_clcmd("say", "cmdSayHandler");
 
-    // 聊天前缀统一交给 ChatManager，避免重复改写 SayText
+    // БДМмСХЙ«А№ЅШ
+    register_message(get_user_msgid("SayText"), "msgSayText");
 
     // ІЛµҐЧўІб
     register_menucmd(register_menuid("Perm Main"), 1023, "handlePermMain");
@@ -177,9 +154,7 @@ public client_putinserver(id)
 
     // јУФШИЁПЮ
     perm_load(id);
-    perm_sync_level_from_flags(id);
     perm_apply_user_flags(id);
-    perm_sync_level_from_flags(id);
 
     // јмІй·вЅы
     check_ban(id);
@@ -198,9 +173,7 @@ public client_authorized(id)
     if (!equal(szAuth, "STEAM_ID_LAN") && !equal(szAuth, "VALVE_ID_LAN") && !equal(szAuth, "STEAM_0:4:")) {
         copy(g_szAuth[id], charsmax(g_szAuth[]), szAuth);
         perm_load(id);
-        perm_sync_level_from_flags(id);
         perm_apply_user_flags(id);
-        perm_sync_level_from_flags(id);
     }
 }
 
@@ -253,18 +226,23 @@ public cmdPermCheck(id)
     switch (g_iPermLevel[id]) {
         case PERM_NONE: {
             copy(szLevel, charsmax(szLevel), "ЖХНЁНжјТ");
+            break;
         }
         case PERM_TEMP: {
-            copy(szLevel, charsmax(szLevel), "辅助");
+            copy(szLevel, charsmax(szLevel), "Watcher");
+            break;
         }
         case PERM_VIP: {
             copy(szLevel, charsmax(szLevel), "VIP");
+            break;
         }
         case PERM_ADMIN: {
-            copy(szLevel, charsmax(szLevel), "管理员");
+            copy(szLevel, charsmax(szLevel), "№ЬАнФ±");
+            break;
         }
         case PERM_OWNER: {
-            copy(szLevel, charsmax(szLevel), "服主");
+            copy(szLevel, charsmax(szLevel), "ЧоёЯ·юЦч");
+            break;
         }
     }
 
@@ -337,6 +315,168 @@ public cmdSayHandler(id)
 // ============================================================
 public msgSayText(msgId, msgDest, msgEntity)
 {
+    if (msgEntity < 1 || msgEntity > MaxClients) {
+        return PLUGIN_CONTINUE;
+    }
+
+    new id = msgEntity;
+
+    if (!is_user_connected(id)) {
+        return PLUGIN_CONTINUE;
+    }
+
+    // »сИЎПыПўДЪИЭ
+    new szMessage[192];
+    get_msg_arg_string(4, szMessage, charsmax(szMessage));
+
+    // јмІйКЗ·сКЗЖХНЁБДМмПыПў(°ьє¬НжјТГы)
+    // ёсКЅ: name: message »т (team) name: message
+    new szName[32];
+    get_user_name(id, szName, charsmax(szName));
+
+    // Из№ыПыПўЦРІ»°ьє¬НжјТГыЈ¬І»ґ¦Ан
+    if (contain(szMessage, szName) == -1) {
+        return PLUGIN_CONTINUE;
+    }
+
+    new szPrefix[64];
+    new szNewMsg[256];
+
+    switch (g_iPermLevel[id]) {
+        case PERM_OWNER: {
+            // ·юЦчЗТОґТюІШ
+            if (!g_bHidden[id]) {
+                // Мж»»З°ЧєОЄ [LINNA]
+                new szTemp[256];
+                copy(szTemp, charsmax(szTemp), szMessage);
+
+                // №№ЅЁРВПыПў: ^x01[LINNA]^x03 НжјТГы: ПыПў
+                // ХТµЅ "name: " µДО»ЦГ
+                new iPos = contain(szTemp, szName);
+                if (iPos != -1) {
+                    // ХТµЅГ°єЕО»ЦГ
+                    new iColon = contain(szTemp[iPos], ":");
+                    if (iColon != -1) {
+                        iColon += iPos;
+                        new szMsgAfter[192];
+                        copy(szMsgAfter, charsmax(szMsgAfter), szTemp[iColon + 1]);
+
+                        // јмІйКЗ·сУР(team)З°Чє
+                        new bool:bTeam = false;
+                        if (contain(szTemp, "(TEAM)") != -1 || contain(szTemp, "(team)") != -1) {
+                            bTeam = true;
+                        }
+
+                        if (bTeam) {
+                            formatex(szNewMsg, charsmax(szNewMsg), "^1(TEAM) ^3[LINNA]^3 %s^3 %s", szName, szMsgAfter);
+                        } else {
+                            formatex(szNewMsg, charsmax(szNewMsg), "^3[LINNA]^3 %s^3 %s", szName, szMsgAfter);
+                        }
+
+                        set_msg_arg_string(4, szNewMsg);
+                        return PLUGIN_CONTINUE;
+                    }
+                }
+            }
+            // ТюІШЙн·ЭФтІ»РЮёД
+            return PLUGIN_CONTINUE;
+        }
+        case PERM_ADMIN: {
+            // №ЬАнФ±
+            new szTemp[256];
+            copy(szTemp, charsmax(szTemp), szMessage);
+
+            new iPos = contain(szTemp, szName);
+            if (iPos != -1) {
+                new iColon = contain(szTemp[iPos], ":");
+                if (iColon != -1) {
+                    iColon += iPos;
+                    new szMsgAfter[192];
+                    copy(szMsgAfter, charsmax(szMsgAfter), szTemp[iColon + 1]);
+
+                    new bool:bTeam = false;
+                    if (contain(szTemp, "(TEAM)") != -1 || contain(szTemp, "(team)") != -1) {
+                        bTeam = true;
+                    }
+
+                    if (bTeam) {
+                        formatex(szNewMsg, charsmax(szNewMsg), "^1(TEAM) ^3[№ЬАн]^1 %s^3 %s", szName, szMsgAfter);
+                    } else {
+                        formatex(szNewMsg, charsmax(szNewMsg), "^3[№ЬАн]^1 %s^3 %s", szName, szMsgAfter);
+                    }
+
+                    set_msg_arg_string(4, szNewMsg);
+                    return PLUGIN_CONTINUE;
+                }
+            }
+            return PLUGIN_CONTINUE;
+        }
+        case PERM_TEMP: {
+            // 临时管理
+            new szTemp[256];
+            copy(szTemp, charsmax(szTemp), szMessage);
+
+            new iPos = contain(szTemp, szName);
+            if (iPos != -1) {
+                new iColon = contain(szTemp[iPos], ":");
+                if (iColon != -1) {
+                    iColon += iPos;
+                    new szMsgAfter[192];
+                    copy(szMsgAfter, charsmax(szMsgAfter), szTemp[iColon + 1]);
+
+                    new bool:bTeam = false;
+                    if (contain(szTemp, "(TEAM)") != -1 || contain(szTemp, "(team)") != -1) {
+                        bTeam = true;
+                    }
+
+                    if (bTeam) {
+                        formatex(szNewMsg, charsmax(szNewMsg), "^1(TEAM) ^3[Watcher]^1 %s^3 %s", szName, szMsgAfter);
+                    } else {
+                        formatex(szNewMsg, charsmax(szNewMsg), "^3[Watcher]^1 %s^3 %s", szName, szMsgAfter);
+                    }
+
+                    set_msg_arg_string(4, szNewMsg);
+                    return PLUGIN_CONTINUE;
+                }
+            }
+            return PLUGIN_CONTINUE;
+        }
+        case PERM_VIP: {
+            // VIP
+            new szTemp[256];
+            copy(szTemp, charsmax(szTemp), szMessage);
+
+            new iPos = contain(szTemp, szName);
+            if (iPos != -1) {
+                new iColon = contain(szTemp[iPos], ":");
+                if (iColon != -1) {
+                    iColon += iPos;
+                    new szMsgAfter[192];
+                    copy(szMsgAfter, charsmax(szMsgAfter), szTemp[iColon + 1]);
+
+                    new bool:bTeam = false;
+                    if (contain(szTemp, "(TEAM)") != -1 || contain(szTemp, "(team)") != -1) {
+                        bTeam = true;
+                    }
+
+                    if (bTeam) {
+                        formatex(szNewMsg, charsmax(szNewMsg), "^1(TEAM) ^3[VIP]^1 %s^3 %s", szName, szMsgAfter);
+                    } else {
+                        formatex(szNewMsg, charsmax(szNewMsg), "^3[VIP]^1 %s^3 %s", szName, szMsgAfter);
+                    }
+
+                    set_msg_arg_string(4, szNewMsg);
+                    return PLUGIN_CONTINUE;
+                }
+            }
+            return PLUGIN_CONTINUE;
+        }
+        default: {
+            // ЖХНЁНжјТІ»РЮёД
+            return PLUGIN_CONTINUE;
+        }
+    }
+
     return PLUGIN_CONTINUE;
 }
 
@@ -381,6 +521,7 @@ public handlePermMain(id, key)
             g_iMenuAction[id] = 3; // ·ў№ЬАн
             g_iPage[id] = 0;
             show_select_player_menu(id);
+            break;
         }
         case 1: {
             // ·ў·ЕVIPИЁПЮ - РиТЄ·юЦчИЁПЮ
@@ -392,6 +533,7 @@ public handlePermMain(id, key)
             g_iMenuAction[id] = 4; // ·ўVIP
             g_iPage[id] = 0;
             show_select_player_menu(id);
+            break;
         }
         case 2: {
             // ЗеіэИЁПЮ - РиТЄ·юЦчИЁПЮ
@@ -403,6 +545,7 @@ public handlePermMain(id, key)
             g_iMenuAction[id] = 5; // ЗеИЁПЮ
             g_iPage[id] = 0;
             show_select_player_menu(id);
+            break;
         }
         case 3: {
             // ЧоёЯ·юЦчИЁПЮЈЁёшЧФјєЈ©
@@ -414,14 +557,17 @@ public handlePermMain(id, key)
             // ТСѕ­КЗ·юЦчБЛЈ¬МбКѕ
             client_print(id, print_chat, "[HNS] ДгТСѕ­КЗЧоёЯ·юЦчБЛ");
             show_perm_main_menu(id);
+            break;
         }
         case 4: {
             // ФЪПЯИЁПЮБР±н
             show_online_perm_list(id);
+            break;
         }
         case 5: {
             // №ЬАнІЛµҐ
             show_admin_menu(id);
+            break;
         }
         case 9: {
             // НЛіц
@@ -450,19 +596,24 @@ show_online_perm_list(id)
 
         switch (g_iPermLevel[pid]) {
             case PERM_TEMP: {
-                copy(szPermName, charsmax(szPermName), "辅助");
+                copy(szPermName, charsmax(szPermName), "Watcher");
+                break;
             }
             case PERM_NONE: {
                 copy(szPermName, charsmax(szPermName), "ЖХНЁ");
+                break;
             }
             case PERM_VIP: {
                 copy(szPermName, charsmax(szPermName), "VIP");
+                break;
             }
             case PERM_ADMIN: {
-                copy(szPermName, charsmax(szPermName), "管理员");
+                copy(szPermName, charsmax(szPermName), "№ЬАн");
+                break;
             }
             case PERM_OWNER: {
-                copy(szPermName, charsmax(szPermName), "服主");
+                copy(szPermName, charsmax(szPermName), "·юЦч");
+                break;
             }
         }
 
@@ -521,18 +672,19 @@ show_select_player_menu(id)
         switch (g_iPermLevel[pid]) {
             case PERM_NONE: {
                 copy(szPermName, charsmax(szPermName), "ЖХНЁ");
+                break;
             }
             case PERM_VIP: {
                 copy(szPermName, charsmax(szPermName), "VIP");
-            }
-            case PERM_TEMP: {
-                copy(szPermName, charsmax(szPermName), "辅助");
+                break;
             }
             case PERM_ADMIN: {
-                copy(szPermName, charsmax(szPermName), "管理员");
+                copy(szPermName, charsmax(szPermName), "№ЬАн");
+                break;
             }
             case PERM_OWNER: {
-                copy(szPermName, charsmax(szPermName), "服主");
+                copy(szPermName, charsmax(szPermName), "·юЦч");
+                break;
             }
         }
 
@@ -591,6 +743,7 @@ public handlePermSelectPlayer(id, key)
                         return;
                     }
                     show_kick_reason_menu(id, target);
+                    break;
                 }
                 case 2: {
                     // ·вЅы - јмІйИЁПЮ
@@ -605,6 +758,7 @@ public handlePermSelectPlayer(id, key)
                         return;
                     }
                     show_ban_time_menu(id, target);
+                    break;
                 }
                 case 3: {
                     // ·ў№ЬАнИЁПЮ
@@ -624,6 +778,7 @@ public handlePermSelectPlayer(id, key)
                     client_print(target, print_chat, "[HNS] ДгТС±»КЪУи№ЬАнФ±ИЁПЮ");
 
                     show_perm_main_menu(id);
+                    break;
                 }
                 case 4: {
                     // ·ўVIPИЁПЮ
@@ -642,6 +797,7 @@ public handlePermSelectPlayer(id, key)
                     client_print(target, print_chat, "[HNS] ДгТС±»КЪУиVIPИЁПЮ");
 
                     show_perm_main_menu(id);
+                    break;
                 }
                 case 5: {
                     // ЗеіэИЁПЮ
@@ -660,6 +816,7 @@ public handlePermSelectPlayer(id, key)
                     client_print(target, print_chat, "[HNS] ДгµДИЁПЮТС±»Зеіэ");
 
                     show_perm_main_menu(id);
+                    break;
                 }
                 case 6: {
                     // ЧЄТЖ¶УОй
@@ -670,11 +827,13 @@ public handlePermSelectPlayer(id, key)
                     }
                     transfer_player_team(id, target);
                     show_select_player_menu(id);
+                    break;
                 }
                 default: {
                     show_perm_main_menu(id);
                 }
             }
+            break;
         }
         case 7: {
             // ЙПТ»Ті
@@ -682,6 +841,7 @@ public handlePermSelectPlayer(id, key)
                 g_iPage[id]--;
             }
             show_select_player_menu(id);
+            break;
         }
         case 8: {
             // ПВТ»Ті
@@ -689,10 +849,12 @@ public handlePermSelectPlayer(id, key)
                 g_iPage[id]++;
             }
             show_select_player_menu(id);
+            break;
         }
         case 9: {
             // ·µ»Ш
             show_perm_main_menu(id);
+            break;
         }
     }
 }
@@ -748,18 +910,23 @@ public handlePermKickReason(id, key)
     switch (key) {
         case 0: {
             copy(szReason, charsmax(szReason), "ОҐ№жРРОЄ");
+            break;
         }
         case 1: {
             copy(szReason, charsmax(szReason), "№Т»ъ/AFK");
+            break;
         }
         case 2: {
             copy(szReason, charsmax(szReason), "ИиВоЛыИЛ");
+            break;
         }
         case 3: {
             copy(szReason, charsmax(szReason), "¶сТвёЙИЕ");
+            break;
         }
         case 4: {
             copy(szReason, charsmax(szReason), "ЖдЛы");
+            break;
         }
         default: {
             copy(szReason, charsmax(szReason), "ОґЦЄ");
@@ -839,10 +1006,10 @@ public handlePermBanTime(id, key)
     new szTimeStr[32];
 
     switch (key) {
-        case 0: { iBanTime = 3600; copy(szTimeStr, charsmax(szTimeStr), "1РЎК±");             }
-        case 1: { iBanTime = 86400; copy(szTimeStr, charsmax(szTimeStr), "1Мм");             }
-        case 2: { iBanTime = 604800; copy(szTimeStr, charsmax(szTimeStr), "7Мм");             }
-        case 3: { iBanTime = 0; copy(szTimeStr, charsmax(szTimeStr), "УАѕГ");             }
+        case 0: { iBanTime = 3600; copy(szTimeStr, charsmax(szTimeStr), "1РЎК±"); break; }
+        case 1: { iBanTime = 86400; copy(szTimeStr, charsmax(szTimeStr), "1Мм"); break; }
+        case 2: { iBanTime = 604800; copy(szTimeStr, charsmax(szTimeStr), "7Мм"); break; }
+        case 3: { iBanTime = 0; copy(szTimeStr, charsmax(szTimeStr), "УАѕГ"); break; }
         default: {
             show_select_player_menu(id);
             return;
@@ -897,6 +1064,7 @@ show_admin_menu(id)
             len += formatex(szMenu[len], charsmax(szMenu) - len, "\r3. \wФЭНЈ/»Цёґ±ИИь^n");
             len += formatex(szMenu[len], charsmax(szMenu) - len, "\r4. \wЧЄТЖНжјТ¶УОй^n");
             len += formatex(szMenu[len], charsmax(szMenu) - len, "^n\r0. \w·µ»Ш");
+            break;
         }
         case PERM_ADMIN: {
             len = formatex(szMenu, charsmax(szMenu), "\y[№ЬАнІЛµҐ - №ЬАн]\w^n^n");
@@ -908,6 +1076,7 @@ show_admin_menu(id)
             len += formatex(szMenu[len], charsmax(szMenu) - len, "\r6. \wЦШїЄ»ШєП^n");
             len += formatex(szMenu[len], charsmax(szMenu) - len, "\r7. \wЅ»»»¶УОй^n");
             len += formatex(szMenu[len], charsmax(szMenu) - len, "^n\r0. \w·µ»Ш");
+            break;
         }
         case PERM_OWNER: {
             len = formatex(szMenu, charsmax(szMenu), "\y[№ЬАнІЛµҐ - ·юЦч]\w^n^n");
@@ -925,6 +1094,7 @@ show_admin_menu(id)
                 len += formatex(szMenu[len], charsmax(szMenu) - len, "\r9. \wТюІШЙн·Э \y(µ±З°: ПФКѕ)^n");
             }
             len += formatex(szMenu[len], charsmax(szMenu) - len, "^n\r0. \w·µ»Ш");
+            break;
         }
         default: {
             return;
@@ -951,6 +1121,7 @@ public handleAdminMenu(id, key)
             g_iMenuAction[id] = 1; // МЯИЛ
             g_iPage[id] = 0;
             show_select_player_menu(id);
+            break;
         }
         case 1: {
             // ёщѕЭИЁПЮµИј¶Ј¬µЪ2ПоІ»Н¬
@@ -968,6 +1139,7 @@ public handleAdminMenu(id, key)
                 g_iPage[id] = 0;
                 show_select_player_menu(id);
             }
+            break;
         }
         case 2: {
             if (g_iPermLevel[id] == PERM_VIP) {
@@ -981,6 +1153,7 @@ public handleAdminMenu(id, key)
                 // ·юЦч: ИЁПЮ·ў·Е
                 show_perm_main_menu(id);
             }
+            break;
         }
         case 3: {
             if (g_iPermLevel[id] == PERM_VIP) {
@@ -996,6 +1169,7 @@ public handleAdminMenu(id, key)
                 // ·юЦч: »»Нј
                 show_map_list_menu(id);
             }
+            break;
         }
         case 4: {
             if (g_iPermLevel[id] == PERM_ADMIN) {
@@ -1008,6 +1182,7 @@ public handleAdminMenu(id, key)
                 toggle_pause_match(id);
                 show_admin_menu(id);
             }
+            break;
         }
         case 5: {
             if (g_iPermLevel[id] == PERM_ADMIN) {
@@ -1020,6 +1195,7 @@ public handleAdminMenu(id, key)
                 g_iPage[id] = 0;
                 show_select_player_menu(id);
             }
+            break;
         }
         case 6: {
             if (g_iPermLevel[id] == PERM_ADMIN) {
@@ -1031,6 +1207,7 @@ public handleAdminMenu(id, key)
                 restart_round(id);
                 show_admin_menu(id);
             }
+            break;
         }
         case 7: {
             if (g_iPermLevel[id] == PERM_OWNER) {
@@ -1038,6 +1215,7 @@ public handleAdminMenu(id, key)
                 swap_teams(id);
                 show_admin_menu(id);
             }
+            break;
         }
         case 8: {
             if (g_iPermLevel[id] == PERM_OWNER) {
@@ -1050,10 +1228,12 @@ public handleAdminMenu(id, key)
                 }
                 show_admin_menu(id);
             }
+            break;
         }
         case 9: {
             // ·µ»Ш
             show_perm_main_menu(id);
+            break;
         }
     }
 }
@@ -1135,6 +1315,7 @@ public handlePermMapList(id, key)
             new param[64];
             copy(param, charsmax(param), szMapName);
             set_task(1.0, "task_change_map", 0, param, charsmax(param));
+            break;
         }
         case 7: {
             // ЙПТ»Ті
@@ -1142,6 +1323,7 @@ public handlePermMapList(id, key)
                 g_iMapPage[id]--;
             }
             show_map_list_menu(id);
+            break;
         }
         case 8: {
             // ПВТ»Ті
@@ -1149,10 +1331,12 @@ public handlePermMapList(id, key)
                 g_iMapPage[id]++;
             }
             show_map_list_menu(id);
+            break;
         }
         case 9: {
             // ·µ»Ш
             show_admin_menu(id);
+            break;
         }
     }
 }
@@ -1162,7 +1346,7 @@ public task_change_map(param[64])
 {
     new szMap[64];
     copy(szMap, charsmax(szMap), param);
-    server_cmd("changelevel %s", szMap);
+    client_cmd(0, "changelevel %s", szMap);
 }
 
 // ============================================================
@@ -1212,8 +1396,12 @@ toggle_pause_match(id)
     // rg_round_pause їЙТФФЭНЈ/»Цёґ»ШєП
     set_cvar_num("pausable", 1);
 
-    // 由服务端执行，避免依赖某个客户端发指令
-    server_cmd("pause");
+    // ·ўЛНФЭНЈ/»ЦёґГьБо
+    // К№УГReGameDLLµДФЭНЈ№¦ДЬ
+    new Float:fGameTime = get_gametime();
+
+    // НЁ№э·ўЛНpauseГьБоКµПЦ
+    client_cmd(id, "pause");
 
     client_print(0, print_chat, "[HNS] ±ИИьТСФЭНЈ/»Цёґ");
 }
@@ -1648,21 +1836,10 @@ stock perm_load(id)
 
     new szLine[256];
     new bool:bFound = false;
-    new iFileVersion = 1;
 
     while (!feof(fp) && !bFound) {
         fgets(fp, szLine, charsmax(szLine));
         trim(szLine);
-
-        if (containi(szLine, "StorageVersion:") != -1) {
-            new szVersion[16];
-            copy(szVersion, charsmax(szVersion), szLine);
-            replace(szVersion, charsmax(szVersion), ";", "");
-            replace(szVersion, charsmax(szVersion), "StorageVersion:", "");
-            trim(szVersion);
-            iFileVersion = str_to_num(szVersion);
-            continue;
-        }
 
         // Мш№эЧўКНєНїХРР
         if (szLine[0] == ';' || szLine[0] == '/' || szLine[0] == '^0') {
@@ -1676,15 +1853,14 @@ stock perm_load(id)
         if (equal(szAuth, g_szAuth[id])) {
             new iPerm = str_to_num(szPerm);
             // 迁移旧权限值：旧 1=VIP 2=管理 3=服主 → 新 2=VIP 3=管理 4=服主
-            if (iFileVersion < PERM_STORAGE_VERSION && iPerm >= 1 && iPerm <= 3)
+            if (iPerm >= 1 && iPerm <= 3)
                 iPerm += 1;
             
             if (iPerm >= PERM_NONE && iPerm <= PERM_OWNER) {
                 g_iPermLevel[id] = iPerm;
 
                 // Н¬ІЅµЅPDS
-                num_to_str(iPerm, szValue, charsmax(szValue));
-                PDS_SetString(szKey, szValue);
+                PDS_SetString(szKey, szPerm);
             }
             bFound = true;
         }
@@ -1711,9 +1887,8 @@ stock perm_save_file()
     }
 
     fprintf(fp, "; HNS PermSystem Permission List^n");
-    fprintf(fp, "; StorageVersion: %d^n", PERM_STORAGE_VERSION);
     fprintf(fp, "; Format: steamid_or_ip name permission_level^n");
-    fprintf(fp, "; Levels: 0=normal 1=helper 2=vip 3=admin 4=owner^n^n");
+    fprintf(fp, "; Levels: 0=ЖХНЁ 1=VIP 2=№ЬАн 3=·юЦч^n^n");
 
     new players[32], num;
     get_players(players, num);
@@ -1753,21 +1928,10 @@ stock perm_load_file()
     }
 
     new szLine[256];
-    new iFileVersion = 1;
 
     while (!feof(fp)) {
         fgets(fp, szLine, charsmax(szLine));
         trim(szLine);
-
-        if (containi(szLine, "StorageVersion:") != -1) {
-            new szVersion[16];
-            copy(szVersion, charsmax(szVersion), szLine);
-            replace(szVersion, charsmax(szVersion), ";", "");
-            replace(szVersion, charsmax(szVersion), "StorageVersion:", "");
-            trim(szVersion);
-            iFileVersion = str_to_num(szVersion);
-            continue;
-        }
 
         // Мш№эЧўКНєНїХРР
         if (szLine[0] == ';' || szLine[0] == '/' || szLine[0] == '^0') {
@@ -1779,9 +1943,6 @@ stock perm_load_file()
         parse(szLine, szAuth, charsmax(szAuth), szName, charsmax(szName), szPerm, charsmax(szPerm));
 
         new iPerm = str_to_num(szPerm);
-        if (iFileVersion < PERM_STORAGE_VERSION && iPerm >= 1 && iPerm <= 3) {
-            iPerm += 1;
-        }
         if (iPerm < PERM_NONE || iPerm > PERM_OWNER) {
             continue;
         }
@@ -1795,7 +1956,6 @@ stock perm_load_file()
         }
 
         // јУФШµЅPDS
-        num_to_str(iPerm, szPerm, charsmax(szPerm));
         PDS_SetString(szKey, szPerm);
     }
 

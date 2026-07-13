@@ -914,7 +914,12 @@ public mainMenuHandler(id, key) {
 	} else if (key == 2) {                        // Key 3: 选择模式
 		menuSelectMode(id);
 	} else if (key == 3) {                        // Key 4: 训练工具
-		showTrainingMenu(id);
+		if (g_iCurrentMode != MODE_TRAINING) {
+			client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
+			showMainMenu(id);
+		} else {
+			showTrainingMenu(id);
+		}
 	} else if (key == 4) {                        // Key 5: 个人设置
 		showPersonalMenu(id);
 	} else if (key == 5) {                        // Key 6: 地图管理

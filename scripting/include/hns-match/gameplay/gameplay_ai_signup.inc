@@ -61,6 +61,12 @@ new g_szAISChosenMap[32];
 new g_iAISHudSync;
 new g_iAISTeamsHudSync;   // 阵营显示 HUD
 
+// ★ FIX P1-4: 拼刀启动重试计数器
+new g_iAISKnifeRetryCount;
+
+// ★ FIX P1-6: 等待玩家连接计数器（替代 static 变量）
+new g_iAISWaitCount;
+
 // ★ 分组数据 — 保存报名玩家身份用于换图恢复
 new g_szAISSignupPlayers[MAX_PLAYERS + 1][35];  // authid (SteamID 或 IP)
 new g_iAISSignupPlayerCount;
@@ -172,6 +178,7 @@ public aisJoin(id) {
 		g_eAISPlayers[id][AIS_SIGNED] = false;
 		g_eAISPlayers[id][AIS_TEAM] = 0;
 		g_iAISSignedCount--;
+		if (g_iAISSignedCount < 0) g_iAISSignedCount = 0;  // ★ FIX P1-5
 		new szName[32]; get_user_name(id, szName, charsmax(szName));
 		client_print(0, print_chat, "[AI报名] %s 取消了报名。(已报名: %d人)", szName, g_iAISSignedCount);
 		if (g_iAISSignedCount <= 0 && g_eAISState == AIS_SIGNUP) aisCancel();
@@ -199,6 +206,7 @@ public aisUnjoin(id) {
 		g_eAISPlayers[id][AIS_SIGNED] = false;
 		g_eAISPlayers[id][AIS_TEAM] = 0;
 		g_iAISSignedCount--;
+		if (g_iAISSignedCount < 0) g_iAISSignedCount = 0;  // ★ FIX P1-5
 		new szName[32]; get_user_name(id, szName, charsmax(szName));
 		client_print(0, print_chat, "[AI报名] %s 退出了报名。(已报名: %d人)", szName, g_iAISSignedCount);
 		if (g_iAISSignedCount <= 0) aisCancel();
@@ -211,6 +219,10 @@ aisStart() {
 	g_iAISSignedCount = 0;
 	g_iAISSignupTime = get_pcvar_num(g_pAISSignupTime);
 	g_iAISSignupRemaining = g_iAISSignupTime;
+
+	// ★ FIX P1-4/P1-6: 重置重试计数器和等待计数器
+	g_iAISKnifeRetryCount = 0;
+	aisResetWaitCount();
 
 	for (new i = 1; i <= MAX_PLAYERS; i++) {
 		g_eAISPlayers[i][AIS_SIGNED] = false;
@@ -245,6 +257,13 @@ aisCancel() {
 	remove_task(2002);
 	remove_task(2011);  // 恢复等待
 	remove_task(2012);  // 阵营HUD
+	remove_task(2013);  // ★ FIX P0-1: 状态机轮询任务
+
+	// ★ FIX P1-6: 重置等待计数器
+	aisResetWaitCount();
+
+	// ★ FIX P1-4: 重置重试计数器
+	g_iAISKnifeRetryCount = 0;
 
 	for (new i = 1; i <= MAX_PLAYERS; i++) {
 		g_eAISPlayers[i][AIS_SIGNED] = false;
@@ -304,6 +323,14 @@ public aisTaskTimeout() {
 	g_iAISTotalPlayers = g_iAISSignedCount;
 	if (g_iAISTotalPlayers > aisGetMax()) g_iAISTotalPlayers = aisGetMax();
 	if (g_iAISTotalPlayers % 2 != 0) g_iAISTotalPlayers--;
+
+	// ★ FIX P2-7: 防止奇偶截断后人数不足2人
+	if (g_iAISTotalPlayers < 2) {
+		client_print(0, print_chat, "[AI报名] 有效人数不足2人，取消。");
+		aisCancel();
+		return;
+	}
+
 	g_iAISTeamSize = g_iAISTotalPlayers / 2;
 
 	client_print(0, print_chat, "[AI报名] 报名结束！%d人参加，%dv%d",
@@ -485,7 +512,10 @@ aisGetRandomKnifeMap(szOut[], iLen) {
 		}
 	}
 	fclose(f);
-	copy(szOut, iLen, iKnifeCount > 0 ? szMaps[random(iKnifeCount)] : "35hp_knife_v2");
+
+	// ★ FIX P3-15: 防止 random(0) 边界问题
+	if (iKnifeCount <= 0) { copy(szOut, iLen, "35hp_knife_v2"); return; }
+	copy(szOut, iLen, szMaps[random(iKnifeCount)]);
 }
 
 // ==================== 换图恢复 ====================
@@ -581,11 +611,11 @@ public aisTaskTeamCheck() {
 	new iNeeded = g_iAISTeamACount + g_iAISTeamBCount;
 
 	// 至少一半玩家连入就开始，最多等30秒
-	static iWaitCount;
-	if (iConnected >= iNeeded || iWaitCount >= 15) {
+	// ★ FIX P1-6: 使用全局变量替代 static，避免残留
+	if (iConnected >= iNeeded || g_iAISWaitCount >= 15) {
 		remove_task(2011);
 		g_bAISWaitingRecovery = false;
-		iWaitCount = 0;
+		g_iAISWaitCount = 0;
 
 		// 分配队伍
 		aisDoTeamAssign();
@@ -599,7 +629,7 @@ public aisTaskTeamCheck() {
 		return;
 	}
 
-	iWaitCount++;
+	g_iAISWaitCount++;
 
 	// 显示等待状态
 	set_hudmessage(255, 200, 0, -1.0, 0.15, 0, 0.0, 2.0, 0.0, 0.0);
@@ -652,18 +682,34 @@ public aisAutoStartKnife() {
 	new iPlayers[MAX_PLAYERS], iNum;
 	get_players(iPlayers, iNum, "ch");
 	if (iNum < 2) {
-		client_print(0, print_chat, "[AI报名] 玩家不足，等待...");
+		// ★ FIX P1-4: 最多重试10次(约30秒)，超过后取消
+		g_iAISKnifeRetryCount++;
+		if (g_iAISKnifeRetryCount >= 10) {
+			client_print(0, print_chat, "[AI报名] 玩家不足，已等待30秒，取消拼刀。");
+			aisCancel();
+			return;
+		}
+		client_print(0, print_chat, "[AI报名] 玩家不足，等待... (%d/10)", g_iAISKnifeRetryCount);
 		set_task(3.0, "aisAutoStartKnife");
 		return;
 	}
 
+	// ★ FIX P0-1: 设置为拼刀激活状态
+	g_eAISState = AIS_KNIFE_ACTIVE;
+	g_iAISKnifeRetryCount = 0;
+
 	// ★ 设置为团队拼刀，否则 kniferound_roundstart 会切到训练模式导致秒结束
 	g_iMatchStatus = MATCH_TEAMKNIFE;
 	kniferound_start();
+
+	// ★ FIX P0-1: 启动状态机轮询任务，监控拼刀→投票→比赛→结束的状态转换
+	remove_task(2013);
+	set_task(2.0, "aisTaskStateMachine", 2013, _, _, "b");
 }
 
 // ★ 拼刀期间阵营HUD
 public aisShowTeamsHud() {
+	// ★ FIX P2-9: 比赛开始后停止显示拼刀阵营HUD
 	if (g_eAISState != AIS_KNIFE_PENDING && g_eAISState != AIS_KNIFE_ACTIVE) {
 		remove_task(2012);
 		return;
@@ -690,6 +736,49 @@ public aisShowTeamsHud() {
 
 	set_hudmessage(100, 255, 100, 0.02, 0.02, 0, 0.0, 1.2, 0.0, 0.0);
 	ShowSyncHudMsg(0, g_iAISTeamsHudSync, szMsg);
+}
+
+// ★ FIX P0-1/P0-2: 状态机轮询任务 — 自动推进 AIS 状态
+public aisTaskStateMachine() {
+	switch (g_eAISState) {
+		case AIS_KNIFE_ACTIVE: {
+			// 拼刀结束: g_iMatchStatus 从 MATCH_TEAMKNIFE 变为 MATCH_MAPPICK
+			if (g_iMatchStatus != MATCH_TEAMKNIFE) {
+				g_eAISState = AIS_VOTE_MODE;
+				client_print(0, print_chat, "[AI报名] 拼刀结束，进入投票/选图阶段。");
+			}
+		}
+		case AIS_VOTE_MODE: {
+			// 比赛开始: g_iMatchStatus 到达 MATCH_WAITCONNECT 或 MATCH_STARTED
+			if (g_iMatchStatus == MATCH_WAITCONNECT || g_iMatchStatus == MATCH_STARTED) {
+				g_eAISState = AIS_LOCKED;
+				client_print(0, print_chat, "[AI报名] 比赛开始！AI系统已锁定。");
+			}
+			// 异常回退: 如果状态回到 NONE
+			if (g_iMatchStatus == MATCH_NONE) {
+				client_print(0, print_chat, "[AI报名] 比赛未开始，AI系统重置。");
+				aisCancel();
+			}
+		}
+		case AIS_LOCKED: {
+			// 比赛结束: g_iMatchStatus 回到 MATCH_NONE
+			if (g_iMatchStatus == MATCH_NONE) {
+				client_print(0, print_chat, "[AI报名] 比赛结束，AI系统重置。");
+				aisCancel();
+			}
+		}
+		default: {
+			// AIS_IDLE / AIS_SIGNUP / AIS_KNIFE_PENDING / AIS_FINAL — 不需要处理
+			remove_task(2013);
+		}
+	}
+}
+
+// ★ FIX P1-6: 重置 aisTaskTeamCheck 中的 static 计数器
+aisResetWaitCount() {
+	// 通过 set_pcvar 或直接操作无法重置 static 变量
+	// 改为使用全局变量替代 static
+	g_iAISWaitCount = 0;
 }
 
 aisSaveRecovery() {
@@ -903,7 +992,9 @@ aisOnDisconnect(id) {
 	if (g_eAISState == AIS_SIGNUP && g_eAISPlayers[id][AIS_SIGNED]) {
 		g_eAISPlayers[id][AIS_SIGNED] = false;
 		g_eAISPlayers[id][AIS_TEAM] = 0;
+		g_eAISPlayers[id][AIS_SIGN_TIME] = 0;  // ★ FIX P2-8: 清除报名时间
 		g_iAISSignedCount--;
+		if (g_iAISSignedCount < 0) g_iAISSignedCount = 0;  // ★ FIX P1-5
 		if (g_iAISSignedCount <= 0) aisCancel();
 	}
 
@@ -938,6 +1029,9 @@ aisOnDisconnect(id) {
 				break;
 			}
 		}
+
+		// ★ FIX P2-8: 同步递减总人数
+		if (g_iAISTotalPlayers > 0) g_iAISTotalPlayers--;
 	}
 }
 

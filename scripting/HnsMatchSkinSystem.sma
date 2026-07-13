@@ -18,6 +18,8 @@
 
 #include <amxmodx>
 #include <amxmisc>
+#include <string>
+#include <string_const>
 #include <reapi>
 #define m_szViewModel (m_szModel + 128)
 #include <PersistentDataStorage>
@@ -38,6 +40,9 @@
 #define MAX_PLAYERS_DATA    512
 #define MAX_OWNED_SKINS     64
 #define MAX_MENU_PAGE       7
+#define MAX_ACCOUNT_NAME    32
+#define MAX_ACCOUNT_PASS    64
+#define MAX_ACCOUNT_HASH    80
 #define Invalid_Array       -1
 #define EOS                 0
 
@@ -52,6 +57,7 @@
 
 // 管理员密码
 #define ADMIN_PASSWORD       "890514"
+#define ACCOUNT_HASH_SALT    "HNS_MATCH_SKIN_ACCOUNT_V1"
 
 // 菜单ID
 #define MENU_PLAYER_MAIN    8001
@@ -132,6 +138,12 @@ new g_szPlayerIP[MAX_PLAYERS + 1][MAX_AUTHID_LENGTH];
 new g_szPlayerName[MAX_PLAYERS + 1][32];
 
 // ============================================================
+//  全局变量 - 内测账号
+// ============================================================
+new bool:g_bAccountLoggedIn[MAX_PLAYERS + 1];
+new g_szAccountName[MAX_PLAYERS + 1][MAX_ACCOUNT_NAME];
+
+// ============================================================
 //  plugin_precache - 加载模型配置并预缓存
 // ============================================================
 public plugin_precache() {
@@ -164,6 +176,18 @@ public plugin_init() {
     // 管理员皮肤验证
     register_clcmd("say /linna", "cmdAdminVerify");
     register_clcmd("say_team /linna", "cmdAdminVerify");
+
+    // 内测账号
+    register_clcmd("say /reg", "cmdAccountRegister");
+    register_clcmd("say_team /reg", "cmdAccountRegister");
+    register_clcmd("say /register", "cmdAccountRegister");
+    register_clcmd("say_team /register", "cmdAccountRegister");
+    register_clcmd("say /login", "cmdAccountLogin");
+    register_clcmd("say_team /login", "cmdAccountLogin");
+    register_clcmd("say /logout", "cmdAccountLogout");
+    register_clcmd("say_team /logout", "cmdAccountLogout");
+    register_clcmd("say /account", "cmdAccountInfo");
+    register_clcmd("say_team /account", "cmdAccountInfo");
 
     // 皮肤发放
     register_clcmd("say /give skin", "cmdGiveSkin");
@@ -223,8 +247,7 @@ public client_putinserver(id) {
     get_user_name(id, g_szPlayerName[id], charsmax(g_szPlayerName[]));
 
     // 加载存档
-    load_player_skins(id);
-    load_admin_skins(id);
+    load_skin_profile(id);
 }
 
 // ============================================================
@@ -235,8 +258,7 @@ public client_disconnected(id) {
         return;
     }
 
-    save_player_skins(id);
-    save_admin_skins(id);
+    save_skin_profile(id);
 }
 
 // ============================================================
@@ -253,29 +275,52 @@ public client_authorized(id) {
     // 如果SteamID不再是LAN，重新加载
     if (!equal(szAuth, "STEAM_ID_LAN") && !equal(szAuth, "VALVE_ID_LAN")) {
         copy(g_szPlayerAuth[id], charsmax(g_szPlayerAuth[]), szAuth);
-        load_player_skins(id);
-        load_admin_skins(id);
+        load_skin_profile(id);
     }
 }
 
-// ============================================================
-//  重置玩家数据
-// ============================================================
-stock reset_player_data(id) {
+stock clear_skin_profile_state(const id) {
     g_iOwnedTCount[id] = 0;
     g_iOwnedCTCount[id] = 0;
     g_iOwnedKnifeCount[id] = 0;
     g_iSelectedT[id] = -1;
     g_iSelectedCT[id] = -1;
     g_iSelectedKnife[id] = -1;
-    g_iSkinSelectType[id] = 0;
-    g_iSkinSelectPage[id] = 0;
 
     g_bAdminVerified[id] = false;
-    g_iVerifyStep[id] = 0;
     g_iAdminSelectedT[id] = -1;
     g_iAdminSelectedCT[id] = -1;
     g_iAdminSelectedKnife[id] = -1;
+}
+
+stock load_skin_profile(const id) {
+    if (!is_user_connected(id)) {
+        return;
+    }
+
+    clear_skin_profile_state(id);
+    load_player_skins(id);
+    load_admin_skins(id);
+}
+
+stock save_skin_profile(const id) {
+    if (!is_user_connected(id)) {
+        return;
+    }
+
+    save_player_skins(id);
+    save_admin_skins(id);
+}
+
+// ============================================================
+//  重置玩家数据
+// ============================================================
+stock reset_player_data(id) {
+    clear_skin_profile_state(id);
+
+    g_iSkinSelectType[id] = 0;
+    g_iSkinSelectPage[id] = 0;
+    g_iVerifyStep[id] = 0;
     g_iAdminSelectType[id] = 0;
     g_iAdminSelectPage[id] = 0;
 
@@ -286,6 +331,8 @@ stock reset_player_data(id) {
     g_szPlayerAuth[id][0] = EOS;
     g_szPlayerIP[id][0] = EOS;
     g_szPlayerName[id][0] = EOS;
+    g_bAccountLoggedIn[id] = false;
+    g_szAccountName[id][0] = EOS;
 }
 
 // ============================================================
@@ -696,6 +743,12 @@ public cmdMenu(const id) {
     if (!is_user_connected(id)) {
         return PLUGIN_CONTINUE;
     }
+
+    if (get_user_flags(id) & ADMIN_MENU) {
+        client_cmd(id, "amxmodmenu");
+        return PLUGIN_HANDLED;
+    }
+
     showPlayerMenu(id);
     return PLUGIN_HANDLED;
 }
@@ -841,6 +894,12 @@ stock showPlayerInfo(const id) {
     new szIP[MAX_AUTHID_LENGTH];
     get_user_ip(id, szIP, charsmax(szIP), 1);
     iLen += format(szMenu[iLen], charsmax(szMenu) - iLen, "\wIP: \y%s^n", szIP);
+
+    if (g_bAccountLoggedIn[id]) {
+        iLen += format(szMenu[iLen], charsmax(szMenu) - iLen, "\w内测账号: \y%s^n", g_szAccountName[id]);
+    } else {
+        iLen += format(szMenu[iLen], charsmax(szMenu) - iLen, "\w内测账号: \r未登录^n");
+    }
 
     // 战斗统计
     iLen += format(szMenu[iLen], charsmax(szMenu) - iLen, "^n\r-- 战斗统计 --^n");
@@ -1276,6 +1335,138 @@ public cmdSayHandler(const id) {
     }
 
     return PLUGIN_CONTINUE;
+}
+
+public cmdAccountInfo(const id) {
+    if (!is_user_connected(id)) {
+        return PLUGIN_CONTINUE;
+    }
+
+    if (g_bAccountLoggedIn[id]) {
+        client_print(id, print_chat, "[账号系统] 当前已登录内测账号: %s", g_szAccountName[id]);
+        client_print(id, print_chat, "[账号系统] 可用命令: /logout");
+    } else {
+        client_print(id, print_chat, "[账号系统] 当前未登录内测账号");
+        client_print(id, print_chat, "[账号系统] 注册: /reg <内测名> <密码>");
+        client_print(id, print_chat, "[账号系统] 登录: /login <内测名> <密码>");
+    }
+
+    return PLUGIN_HANDLED;
+}
+
+public cmdAccountRegister(const id) {
+    if (!is_user_connected(id)) {
+        return PLUGIN_CONTINUE;
+    }
+
+    new szArgs[192], szAccountRaw[64], szPassword[MAX_ACCOUNT_PASS];
+    read_args(szArgs, charsmax(szArgs));
+    remove_quotes(szArgs);
+    trim(szArgs);
+    strip_account_command_prefix(szArgs, charsmax(szArgs), "/reg");
+    strip_account_command_prefix(szArgs, charsmax(szArgs), "reg");
+    strip_account_command_prefix(szArgs, charsmax(szArgs), "/register");
+    strip_account_command_prefix(szArgs, charsmax(szArgs), "register");
+
+    parse(szArgs, szAccountRaw, charsmax(szAccountRaw), szPassword, charsmax(szPassword));
+
+    if (szAccountRaw[0] == EOS || szPassword[0] == EOS) {
+        client_print(id, print_chat, "[账号系统] 用法: /reg <内测名> <密码>");
+        return PLUGIN_HANDLED;
+    }
+
+    new szAccount[MAX_ACCOUNT_NAME];
+    normalize_account_name(szAccountRaw, szAccount, charsmax(szAccount));
+
+    if (!is_valid_account_name(szAccount)) {
+        client_print(id, print_chat, "[账号系统] 内测名只支持 3-24 位英文、数字、下划线、短横线");
+        return PLUGIN_HANDLED;
+    }
+
+    if (!is_valid_account_password(szPassword)) {
+        client_print(id, print_chat, "[账号系统] 密码长度需为 4-32 位");
+        return PLUGIN_HANDLED;
+    }
+
+    new szHash[MAX_ACCOUNT_HASH];
+    if (find_account_record(szAccount, szHash, charsmax(szHash))) {
+        client_print(id, print_chat, "[账号系统] 内测名 %s 已存在，请换一个", szAccount);
+        return PLUGIN_HANDLED;
+    }
+
+    hash_account_password(szAccount, szPassword, szHash, charsmax(szHash));
+    if (!append_account_record(szAccount, szHash)) {
+        client_print(id, print_chat, "[账号系统] 注册失败，账号文件写入错误");
+        return PLUGIN_HANDLED;
+    }
+
+    g_bAccountLoggedIn[id] = true;
+    copy(g_szAccountName[id], charsmax(g_szAccountName[]), szAccount);
+    save_skin_profile(id);
+
+    client_print(id, print_chat, "[账号系统] 注册成功，已登录内测账号: %s", szAccount);
+    client_print(id, print_chat, "[账号系统] 你当前已加载/绑定的皮肤数据将保存到此账号");
+    return PLUGIN_HANDLED;
+}
+
+public cmdAccountLogin(const id) {
+    if (!is_user_connected(id)) {
+        return PLUGIN_CONTINUE;
+    }
+
+    new szArgs[192], szAccountRaw[64], szPassword[MAX_ACCOUNT_PASS];
+    read_args(szArgs, charsmax(szArgs));
+    remove_quotes(szArgs);
+    trim(szArgs);
+    strip_account_command_prefix(szArgs, charsmax(szArgs), "/login");
+    strip_account_command_prefix(szArgs, charsmax(szArgs), "login");
+
+    parse(szArgs, szAccountRaw, charsmax(szAccountRaw), szPassword, charsmax(szPassword));
+
+    if (szAccountRaw[0] == EOS || szPassword[0] == EOS) {
+        client_print(id, print_chat, "[账号系统] 用法: /login <内测名> <密码>");
+        return PLUGIN_HANDLED;
+    }
+
+    new szAccount[MAX_ACCOUNT_NAME], szStoredHash[MAX_ACCOUNT_HASH], szInputHash[MAX_ACCOUNT_HASH];
+    normalize_account_name(szAccountRaw, szAccount, charsmax(szAccount));
+
+    if (!find_account_record(szAccount, szStoredHash, charsmax(szStoredHash))) {
+        client_print(id, print_chat, "[账号系统] 内测账号不存在: %s", szAccount);
+        return PLUGIN_HANDLED;
+    }
+
+    hash_account_password(szAccount, szPassword, szInputHash, charsmax(szInputHash));
+    if (!equal(szStoredHash, szInputHash)) {
+        client_print(id, print_chat, "[账号系统] 密码错误");
+        return PLUGIN_HANDLED;
+    }
+
+    g_bAccountLoggedIn[id] = true;
+    copy(g_szAccountName[id], charsmax(g_szAccountName[]), szAccount);
+    load_skin_profile(id);
+
+    client_print(id, print_chat, "[账号系统] 登录成功，当前账号: %s", szAccount);
+    return PLUGIN_HANDLED;
+}
+
+public cmdAccountLogout(const id) {
+    if (!is_user_connected(id)) {
+        return PLUGIN_CONTINUE;
+    }
+
+    if (!g_bAccountLoggedIn[id]) {
+        client_print(id, print_chat, "[账号系统] 你当前没有登录内测账号");
+        return PLUGIN_HANDLED;
+    }
+
+    save_skin_profile(id);
+    g_bAccountLoggedIn[id] = false;
+    g_szAccountName[id][0] = EOS;
+    load_skin_profile(id);
+
+    client_print(id, print_chat, "[账号系统] 已退出内测账号，当前回到原始识别模式");
+    return PLUGIN_HANDLED;
 }
 
 // 管理员皮肤主菜单
@@ -2167,23 +2358,27 @@ stock load_player_skins(const id) {
 
     new szKey[128];
     new szData[1024];
-
-    // 先尝试用SteamID
-    new szAuth[MAX_AUTHID_LENGTH];
-    get_user_authid(id, szAuth, charsmax(szAuth));
-
     new bool:bLoaded = false;
 
-    // 尝试SteamID
-    if (!equal(szAuth, "STEAM_ID_LAN") && !equal(szAuth, "VALVE_ID_LAN")) {
-        format(szKey, charsmax(szKey), "hns_skin_%s", szAuth);
-        if (PDS_GetString(szKey, szData, charsmax(szData))) {
-            bLoaded = true;
+    format(szKey, charsmax(szKey), "hns_skin_%s", szIdentifier);
+    if (PDS_GetString(szKey, szData, charsmax(szData))) {
+        bLoaded = true;
+    }
+
+    // 未登录账号时保留旧兼容逻辑：SteamID -> IP -> 名字
+    if (!bLoaded && !g_bAccountLoggedIn[id]) {
+        new szAuth[MAX_AUTHID_LENGTH];
+        get_user_authid(id, szAuth, charsmax(szAuth));
+
+        if (!equal(szAuth, "STEAM_ID_LAN") && !equal(szAuth, "VALVE_ID_LAN")) {
+            format(szKey, charsmax(szKey), "hns_skin_%s", szAuth);
+            if (PDS_GetString(szKey, szData, charsmax(szData))) {
+                bLoaded = true;
+            }
         }
     }
 
-    // SteamID没找到，尝试IP
-    if (!bLoaded) {
+    if (!bLoaded && !g_bAccountLoggedIn[id]) {
         new szIP[MAX_AUTHID_LENGTH];
         get_user_ip(id, szIP, charsmax(szIP), 1);
         format(szKey, charsmax(szKey), "hns_skin_%s", szIP);
@@ -2192,8 +2387,7 @@ stock load_player_skins(const id) {
         }
     }
 
-    // IP也没找到，尝试名字
-    if (!bLoaded) {
+    if (!bLoaded && !g_bAccountLoggedIn[id]) {
         new szName[32];
         get_user_name(id, szName, charsmax(szName));
         format(szKey, charsmax(szKey), "hns_skin_%s", szName);
@@ -2202,8 +2396,8 @@ stock load_player_skins(const id) {
         }
     }
 
-    // 如果PDS中没找到，从文件加载
-    if (!bLoaded) {
+    // 如果PDS中没找到，从文件加载（仅旧兼容模式使用）
+    if (!bLoaded && !g_bAccountLoggedIn[id]) {
         load_skin_data_from_file_for_player(id);
     }
 
@@ -2237,11 +2431,10 @@ stock save_admin_skins(const id) {
     }
 
     new szAuth[MAX_AUTHID_LENGTH];
-    get_user_authid(id, szAuth, charsmax(szAuth));
+    get_player_identifier(id, szAuth, charsmax(szAuth));
 
-    // 盗版玩家用IP
-    if (equal(szAuth, "STEAM_ID_LAN") || equal(szAuth, "VALVE_ID_LAN")) {
-        get_user_ip(id, szAuth, charsmax(szAuth), 1);
+    if (szAuth[0] == EOS) {
+        return;
     }
 
     new szKey[128];
@@ -2266,11 +2459,10 @@ stock load_admin_skins(const id) {
     }
 
     new szAuth[MAX_AUTHID_LENGTH];
-    get_user_authid(id, szAuth, charsmax(szAuth));
+    get_player_identifier(id, szAuth, charsmax(szAuth));
 
-    // 盗版玩家用IP
-    if (equal(szAuth, "STEAM_ID_LAN") || equal(szAuth, "VALVE_ID_LAN")) {
-        get_user_ip(id, szAuth, charsmax(szAuth), 1);
+    if (szAuth[0] == EOS) {
+        return;
     }
 
     new szKey[128];
@@ -2627,8 +2819,104 @@ stock take_skin(const id, const iType, const iSkinIndex) {
     }
 }
 
-// 获取玩家标识（SteamID/IP/Name）
+stock strip_account_command_prefix(szArgs[], iLen, const szPrefix[]) {
+    if (containi(szArgs, szPrefix) == 0) {
+        copy(szArgs, iLen, szArgs[strlen(szPrefix)]);
+        trim(szArgs);
+    }
+}
+
+stock normalize_account_name(const szInput[], szOutput[], iLen) {
+    copy(szOutput, iLen, szInput);
+    trim(szOutput);
+    strtolower(szOutput);
+}
+
+stock bool:is_valid_account_name(const szAccount[]) {
+    new iLen = strlen(szAccount);
+    if (iLen < 3 || iLen > 24) {
+        return false;
+    }
+
+    for (new i = 0; i < iLen; i++) {
+        new c = szAccount[i];
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+            continue;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+stock bool:is_valid_account_password(const szPassword[]) {
+    new iLen = strlen(szPassword);
+    return (iLen >= 4 && iLen <= 32);
+}
+
+stock get_account_file_path(szPath[], iLen) {
+    get_localinfo("amxx_configsdir", szPath, iLen);
+    format(szPath, iLen, "%s/mixsystem/skin_accounts.txt", szPath);
+}
+
+stock hash_account_password(const szAccount[], const szPassword[], szOutput[], iOutputLen) {
+    new szSource[160];
+    formatex(szSource, charsmax(szSource), "%s|%s|%s", ACCOUNT_HASH_SALT, szAccount, szPassword);
+    hash_string(szSource, Hash_Sha256, szOutput, iOutputLen);
+}
+
+stock bool:find_account_record(const szAccount[], szHashOut[], iHashLen) {
+    new szPath[256];
+    get_account_file_path(szPath, charsmax(szPath));
+
+    new f = fopen(szPath, "rt");
+    if (!f) {
+        return false;
+    }
+
+    new szLine[256], szStoredAccount[MAX_ACCOUNT_NAME], szRest[160];
+    new bool:bFound = false;
+
+    while (!feof(f) && !bFound) {
+        fgets(f, szLine, charsmax(szLine));
+        trim(szLine);
+
+        if (szLine[0] == EOS || szLine[0] == ';' || szLine[0] == '#') {
+            continue;
+        }
+
+        strtok2(szLine, szStoredAccount, charsmax(szStoredAccount), szRest, charsmax(szRest), '|', TRIM_FULL);
+        if (equali(szStoredAccount, szAccount)) {
+            copy(szHashOut, iHashLen, szRest);
+            bFound = true;
+        }
+    }
+
+    fclose(f);
+    return bFound;
+}
+
+stock bool:append_account_record(const szAccount[], const szHash[]) {
+    new szPath[256];
+    get_account_file_path(szPath, charsmax(szPath));
+
+    new f = fopen(szPath, "at");
+    if (!f) {
+        return false;
+    }
+
+    fprintf(f, "%s|%s^n", szAccount, szHash);
+    fclose(f);
+    return true;
+}
+
+// 获取玩家标识（优先内测账号，其次SteamID/IP）
 stock get_player_identifier(const id, szOut[], iLen) {
+    if (g_bAccountLoggedIn[id] && g_szAccountName[id][0] != EOS) {
+        formatex(szOut, iLen, "acc_%s", g_szAccountName[id]);
+        return;
+    }
+
     new szAuth[MAX_AUTHID_LENGTH];
     get_user_authid(id, szAuth, charsmax(szAuth));
 

@@ -11,7 +11,7 @@
 // ==================== 插件信息 ====================
 #define PLUGIN_NAME "Match: AI Teams"
 #define PLUGIN_VERSION "4.0.9"
-#define PLUGIN_AUTHOR "LINNA"
+#define PLUGIN_AUTHOR "OpenHNS"
 
 // ==================== 任务ID常量 ====================
 #define TASKID_SIGNUP            1001  // 报名倒计时循环任务
@@ -19,7 +19,6 @@
 #define TASKID_VOTE              1003  // 投票倒计时循环任务
 #define TASKID_VOTE_TIMEOUT      1004  // 投票超时一次性任务
 #define TASKID_PAUSE             1005  // 暂停倒计时循环任务
-#define TASKID_RECOVERY_CHECK    1006  // 换图后重连检查任务
 
 // ==================== 常量 ====================
 #define MAX_PLAYERS 32
@@ -100,7 +99,6 @@ enum _:MAP_DATA {
 // ==================== 全局变量 ====================
 new g_eAIState = AI_STATE_IDLE;
 new g_iTeamSize = 6;              // 最大队伍人数（默认6v6）
-new g_iMatchTeamSize = 6;         // 当前这场实际队伍人数
 new g_iMinPlayers = 2;            // 最低报名人数
 new g_iSignupTime = 60;           // 报名倒计时（秒）
 new g_iSignupTimer;               // 报名倒计时任务ID
@@ -123,17 +121,8 @@ new g_szRegisteredIPs[MAX_PLAYERS + 1][MAX_IP];  // 用于IP去重
 #define MAX_PLAYER_KEY 64  // IP(22) + Name(32) + 分隔符
 new g_szRecoveryKeys[MAX_PLAYERS + 1][MAX_PLAYER_KEY];  // 待恢复的玩家唯一标识
 new g_iRecoveryTeams[MAX_PLAYERS + 1];                 // 对应的队伍
-new bool:g_bRecoveryCaptain[MAX_PLAYERS + 1];          // 是否为队长
 new g_iRecoveryCount;                                   // 待恢复玩家数
 new g_iRecoveryReconnected;                             // 已重连玩家数
-
-// 30秒重连
-new g_szDisconnectKey[MAX_PLAYERS + 1][MAX_PLAYER_KEY];
-new g_szDisconnectTeam[MAX_PLAYERS + 1];
-new g_szDisconnectTime[MAX_PLAYERS + 1];
-new bool:g_bWasInMatch[MAX_PLAYERS + 1];
-new bool:g_bDisconnectCaptain[MAX_PLAYERS + 1];
-new g_iReconnectTimer[MAX_PLAYERS + 1];
 
 // 队伍数据
 new g_iTeamPlayers[MAX_TEAMS][MAX_PLAYERS + 1];    // 每队的玩家ID列表
@@ -262,7 +251,6 @@ public plugin_init() {
 public plugin_cfg() {
     // 读取CVAR
     g_iTeamSize = get_cvar_num("ai_team_size");
-    g_iMatchTeamSize = g_iTeamSize;
     g_iMinPlayers = get_cvar_num("ai_min_players");
     g_iSignupTime = get_cvar_num("ai_signup_time");
     g_iVoteTime = get_cvar_num("ai_vote_time");
@@ -302,16 +290,6 @@ check_recovery_player(id) {
             
             g_ePlayers[id][PAD_IN_TEAM] = true;
             g_ePlayers[id][PAD_TEAM] = g_iRecoveryTeams[i];
-            g_ePlayers[id][PAD_REGISTERED] = true;
-            g_ePlayers[id][PAD_SCORE] = calculate_player_score(id);
-            if (!is_player_in_team_list(id, g_iRecoveryTeams[i])) {
-                g_iTeamPlayers[g_iRecoveryTeams[i]][g_iTeamCount[g_iRecoveryTeams[i]]] = id;
-                g_iTeamCount[g_iRecoveryTeams[i]]++;
-            }
-            if (g_bRecoveryCaptain[i]) {
-                g_iCaptain[g_iRecoveryTeams[i]] = id;
-                g_ePlayers[id][PAD_IS_CAPTAIN] = true;
-            }
             g_iRecoveryReconnected++;
             
             client_print(id, print_chat, "[AI Teams] 队伍已恢复! 你属于 Team %s.", 
@@ -319,8 +297,6 @@ check_recovery_player(id) {
             
             // 标记已处理，防止重复
             g_szRecoveryKeys[i][0] = EOS;
-            g_bRecoveryCaptain[i] = false;
-            recalc_team_scores();
             return;
         }
     }
@@ -333,32 +309,28 @@ check_recovery_player(id) {
 // ★ 定时检查所有玩家是否已重连
 public task_CheckAllPlayersReconnected() {
     if (g_iRecoveryReconnected >= g_iRecoveryCount) {
-        remove_task(TASKID_RECOVERY_CHECK);
+        remove_task(0);  // 移除当前循环任务
         client_print(0, print_chat, "[AI Teams] 所有 %d 名玩家已重连，比赛即将开始!", g_iRecoveryCount);
         set_task(2.0, "task_ExecMatchConfig");
     }
 }
 
 public client_disconnected(id) {
-    new bool:bWasCaptain = g_ePlayers[id][PAD_IS_CAPTAIN];
-    new iTeam = g_ePlayers[id][PAD_TEAM];
-
     // 如果玩家已报名，取消报名
     if (g_ePlayers[id][PAD_REGISTERED] && g_eAIState == AI_STATE_SIGNUP) {
         remove_player(id);
     }
-
-    // 保存断线数据（用于30秒重连）
-    save_disconnect_data(id);
-
-    if (g_ePlayers[id][PAD_IN_TEAM]) {
-        remove_team_member(id, true);
-    }
-
+    
     // 如果是指挥官且在比赛中
-    if (bWasCaptain && g_eAIState == AI_STATE_LOCKED) {
+    if (g_ePlayers[id][PAD_IS_CAPTAIN] && g_eAIState == AI_STATE_LOCKED) {
+        // 重新随机选指挥官
+        new iTeam = g_ePlayers[id][PAD_TEAM];
         select_captain(iTeam);
     }
+    
+    // 保存断线数据（用于30秒重连）
+    save_disconnect_data(id);
+    
     // 重置数据
     arrayset(g_ePlayers[id], 0, sizeof(g_ePlayers[]));
     g_ePlayers[id][PAD_VOTE_MAPTYPE] = -1;
@@ -441,7 +413,6 @@ start_signup() {
     g_iRegisteredCount = 0;
     g_iRefreshCount = 0;
     g_iSignupRemaining = g_iSignupTime;
-    g_iMatchTeamSize = g_iTeamSize;
     
     // 清空队伍数据
     for (new t = 0; t < MAX_TEAMS; t++) {
@@ -519,9 +490,9 @@ adjust_team_size() {
     // 不能超过管理员设定的人数
     if (iTotal / 2 > g_iTeamSize) iTotal = g_iTeamSize * 2;
     
-    // 更新实际队伍大小，但不污染全局配置
-    g_iMatchTeamSize = iTotal / 2;
-    if (g_iMatchTeamSize < 1) g_iMatchTeamSize = 1;
+    // 更新实际队伍大小
+    g_iTeamSize = iTotal / 2;
+    if (g_iTeamSize < 1) g_iTeamSize = 1;
 }
 
 cancel_signup() {
@@ -619,19 +590,16 @@ calculate_player_score(id) {
     // 综合评分
     new Float:flScore = flPTS * g_flWeightPTS + flWinRate * 1000.0 * g_flWeightWinRate + flMatches * g_flWeightMatches;
     
+    // 5%随机因素
+    new Float:flRandom = flScore * 0.05;
+    flScore += random_float(-flRandom, flRandom);
+    
     return max(0, floatround(flScore));
 }
 
 // ==================== AI分组 ====================
 perform_grouping() {
     g_eAIState = AI_STATE_GROUPING;
-
-    for (new t = 0; t < MAX_TEAMS; t++) {
-        g_iTeamCount[t] = 0;
-        g_iTeamScore[t] = 0;
-        g_iCaptain[t] = 0;
-        arrayset(g_iTeamPlayers[t], 0, sizeof(g_iTeamPlayers[]));
-    }
     
     // 收集所有报名玩家
     new iPlayers[MAX_PLAYERS], iCount;
@@ -648,7 +616,6 @@ perform_grouping() {
     new iScores[MAX_PLAYERS];
     for (new i = 0; i < iActiveCount; i++) {
         iScores[i] = calculate_player_score(iPlayers[i]);
-        g_ePlayers[iPlayers[i]][PAD_SCORE] = iScores[i];
     }
     
     // 按评分排序（冒泡排序）
@@ -662,13 +629,19 @@ perform_grouping() {
         }
     }
     
+    // 蛇形选人
+    g_iTeamCount[AI_TEAM_A] = 0;
+    g_iTeamCount[AI_TEAM_B] = 0;
+    g_iTeamScore[AI_TEAM_A] = 0;
+    g_iTeamScore[AI_TEAM_B] = 0;
+    
     for (new i = 0; i < iActiveCount; i++) {
         new id = iPlayers[i];
         new iTeam;
         
         // 蛇形：1→A, 2→B, 3→B, 4→A, 5→A, 6→B, 7→B, 8→A...
-        new iRound = i / g_iMatchTeamSize;
-        new iPos = i % g_iMatchTeamSize;
+        new iRound = i / g_iTeamSize;
+        new iPos = i % g_iTeamSize;
         
         if (iRound % 2 == 0) {
             // 偶数轮：正序
@@ -684,13 +657,6 @@ perform_grouping() {
         g_iTeamPlayers[iTeam][g_iTeamCount[iTeam]] = id;
         g_iTeamCount[iTeam]++;
         g_iTeamScore[iTeam] += iScores[i];
-    }
-
-    for (new i = iActiveCount; i < iCount; i++) {
-        new id = iPlayers[i];
-        g_ePlayers[id][PAD_IN_TEAM] = false;
-        g_ePlayers[id][PAD_IS_CAPTAIN] = false;
-        g_ePlayers[id][PAD_SCORE] = 0;
     }
     
     // 选择指挥官
@@ -717,7 +683,9 @@ perform_grouping() {
 
 select_captain(iTeam) {
     // 随机选一个指挥官
-    if (iTeam < AI_TEAM_A || iTeam > AI_TEAM_B || g_iTeamCount[iTeam] == 0) return;
+    if (g_iTeamCount[iTeam] == 0) return;
+    
+    new iRandom = random(g_iTeamCount[iTeam]);
     new iOldCaptain = g_iCaptain[iTeam];
     
     // 取消旧指挥官
@@ -725,22 +693,8 @@ select_captain(iTeam) {
         g_ePlayers[iOldCaptain][PAD_IS_CAPTAIN] = false;
     }
     
-    new iCandidates[MAX_PLAYERS], iCandidateCount;
-    for (new i = 0; i < g_iTeamCount[iTeam]; i++) {
-        new pid = g_iTeamPlayers[iTeam][i];
-        if (!is_user_connected(pid) || !g_ePlayers[pid][PAD_IN_TEAM] || g_ePlayers[pid][PAD_TEAM] != iTeam) {
-            continue;
-        }
-        iCandidates[iCandidateCount++] = pid;
-    }
-
-    if (!iCandidateCount) {
-        g_iCaptain[iTeam] = 0;
-        return;
-    }
-
     // 设置新指挥官
-    new id = iCandidates[random(iCandidateCount)];
+    new id = g_iTeamPlayers[iTeam][iRandom];
     g_iCaptain[iTeam] = id;
     g_ePlayers[id][PAD_IS_CAPTAIN] = true;
     
@@ -764,7 +718,7 @@ show_grouping_result() {
     iLenA += formatex(szTeamA, charsmax(szTeamA), "[Team A] %d: ", g_iTeamScore[AI_TEAM_A]);
     for (new i = 0; i < g_iTeamCount[AI_TEAM_A]; i++) {
         new id = g_iTeamPlayers[AI_TEAM_A][i];
-        new iScore = g_ePlayers[id][PAD_SCORE];
+        new iScore = calculate_player_score(id);
         new szGrade[4];
         get_score_grade(iScore, szGrade, charsmax(szGrade));
         new szTag[8] = "";
@@ -777,7 +731,7 @@ show_grouping_result() {
     iLenB += formatex(szTeamB, charsmax(szTeamB), "[Team B] %d: ", g_iTeamScore[AI_TEAM_B]);
     for (new i = 0; i < g_iTeamCount[AI_TEAM_B]; i++) {
         new id = g_iTeamPlayers[AI_TEAM_B][i];
-        new iScore = g_ePlayers[id][PAD_SCORE];
+        new iScore = calculate_player_score(id);
         new szGrade[4];
         get_score_grade(iScore, szGrade, charsmax(szGrade));
         new szTag[8] = "";
@@ -1387,12 +1341,12 @@ public task_start_match() {
     
     new szModeName[16];
     switch (g_iSelectedMode) {
-        case VOTE_MR:        { copy(szModeName, charsmax(szModeName), "mr"); }
-        case VOTE_TIMER:     { copy(szModeName, charsmax(szModeName), "timer"); }
-        case VOTE_ASCENSION: { copy(szModeName, charsmax(szModeName), "ascension"); }
-        case VOTE_VAMPIRE:   { copy(szModeName, charsmax(szModeName), "vampire"); }
-        case VOTE_ROUNDS:    { copy(szModeName, charsmax(szModeName), "rounds"); }
-        case VOTE_DUEL:      { copy(szModeName, charsmax(szModeName), "duel"); }
+        case VOTE_MR:        { copy(szModeName, charsmax(szModeName), "mr"); break; }
+        case VOTE_TIMER:     { copy(szModeName, charsmax(szModeName), "timer"); break; }
+        case VOTE_ASCENSION: { copy(szModeName, charsmax(szModeName), "ascension"); break; }
+        case VOTE_VAMPIRE:   { copy(szModeName, charsmax(szModeName), "vampire"); break; }
+        case VOTE_ROUNDS:    { copy(szModeName, charsmax(szModeName), "rounds"); break; }
+        case VOTE_DUEL:      { copy(szModeName, charsmax(szModeName), "duel"); break; }
     }
     
     client_print(0, print_chat, "[AI Teams] 比赛启动! 模式: %s, 地图: %s", szModeName, g_szSelectedMap);
@@ -1493,11 +1447,7 @@ recalc_team_scores() {
         if (!g_ePlayers[i][PAD_IN_TEAM]) continue;
         
         new iTeam = g_ePlayers[i][PAD_TEAM];
-        new iScore = g_ePlayers[i][PAD_SCORE];
-        if (iScore <= 0) {
-            iScore = calculate_player_score(i);
-            g_ePlayers[i][PAD_SCORE] = iScore;
-        }
+        new iScore = calculate_player_score(i);
         g_iTeamScore[iTeam] += iScore;
         g_iTeamPlayers[iTeam][g_iTeamCount[iTeam]] = i;
         g_iTeamCount[iTeam]++;
@@ -1817,69 +1767,6 @@ get_player_key(id, szKey[], iLen) {
     }
 }
 
-stock bool:is_player_in_team_list(id, iTeam) {
-    if (iTeam < AI_TEAM_A || iTeam > AI_TEAM_B) {
-        return false;
-    }
-
-    for (new i = 0; i < g_iTeamCount[iTeam]; i++) {
-        if (g_iTeamPlayers[iTeam][i] == id) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-stock remove_team_member(id, bool:bClearPlayerState = true) {
-    new iTeam = g_ePlayers[id][PAD_TEAM];
-    if (iTeam < AI_TEAM_A || iTeam > AI_TEAM_B) {
-        return;
-    }
-
-    for (new i = 0; i < g_iTeamCount[iTeam]; i++) {
-        if (g_iTeamPlayers[iTeam][i] != id) {
-            continue;
-        }
-
-        for (new j = i; j < g_iTeamCount[iTeam] - 1; j++) {
-            g_iTeamPlayers[iTeam][j] = g_iTeamPlayers[iTeam][j + 1];
-        }
-
-        g_iTeamPlayers[iTeam][g_iTeamCount[iTeam] - 1] = 0;
-        g_iTeamCount[iTeam]--;
-        break;
-    }
-
-    if (g_iCaptain[iTeam] == id) {
-        g_iCaptain[iTeam] = 0;
-    }
-
-    if (bClearPlayerState) {
-        g_ePlayers[id][PAD_IN_TEAM] = false;
-        g_ePlayers[id][PAD_TEAM] = 0;
-        g_ePlayers[id][PAD_IS_CAPTAIN] = false;
-    }
-
-    recalc_team_scores();
-}
-
-stock clear_disconnect_slot_by_team(iTeam) {
-    for (new i = 1; i <= MAX_PLAYERS; i++) {
-        if (!g_bWasInMatch[i] || g_szDisconnectTeam[i] != iTeam) {
-            continue;
-        }
-
-        g_bWasInMatch[i] = false;
-        g_bDisconnectCaptain[i] = false;
-        g_szDisconnectKey[i][0] = EOS;
-        g_szDisconnectTime[i] = 0;
-        remove_task(i);
-        g_iReconnectTimer[i] = 0;
-        return;
-    }
-}
-
 // ==================== 状态保存/恢复 ====================
 save_state() {
     new f = fopen(g_szStateFile, "w");
@@ -1887,7 +1774,6 @@ save_state() {
     
     fprintf(f, "state %d^n", g_eAIState);
     fprintf(f, "team_size %d^n", g_iTeamSize);
-    fprintf(f, "match_team_size %d^n", g_iMatchTeamSize);
     fprintf(f, "mode %d^n", g_iSelectedMode);
     fprintf(f, "map %s^n", g_szSelectedMap);
     fprintf(f, "timestamp %d^n", get_systime());
@@ -1897,7 +1783,7 @@ save_state() {
         if (g_ePlayers[i][PAD_IN_TEAM]) {
             new szKey[MAX_PLAYER_KEY];
             get_player_key(i, szKey, charsmax(szKey));
-            fprintf(f, "player ^"%s^" %d %d^n", szKey, g_ePlayers[i][PAD_TEAM], g_ePlayers[i][PAD_IS_CAPTAIN]);
+            fprintf(f, "player %s %d %d^n", szKey, g_ePlayers[i][PAD_TEAM], g_ePlayers[i][PAD_IS_CAPTAIN]);
         }
     }
     
@@ -1917,20 +1803,20 @@ check_recovery() {
         trim(szLine);
         if (szLine[0] == EOS) continue;
         
-        new szKey[32], szValue1[64], szValue2[16], szValue3[16];
-        parse(szLine, szKey, charsmax(szKey), szValue1, charsmax(szValue1), szValue2, charsmax(szValue2), szValue3, charsmax(szValue3));
+        new szKey[32], szValue[MAX_MAP_NAME];
+        parse(szLine, szKey, charsmax(szKey), szValue, charsmax(szValue));
         
-        if (equal(szKey, "state"))      iState = str_to_num(szValue1);
-        if (equal(szKey, "mode"))       iMode = str_to_num(szValue1);
-        if (equal(szKey, "map"))        copy(szMap, charsmax(szMap), szValue1);
-        if (equal(szKey, "team_size"))  g_iTeamSize = str_to_num(szValue1);
-        if (equal(szKey, "match_team_size")) g_iMatchTeamSize = str_to_num(szValue1);
+        if (equal(szKey, "state"))      iState = str_to_num(szValue);
+        if (equal(szKey, "mode"))       iMode = str_to_num(szValue);
+        if (equal(szKey, "map"))        copy(szMap, charsmax(szMap), szValue);
         
         // ★ 读取玩家恢复数据
         if (equal(szKey, "player") && g_iRecoveryCount < MAX_PLAYERS) {
-            copy(g_szRecoveryKeys[g_iRecoveryCount], charsmax(g_szRecoveryKeys[]), szValue1);
-            g_iRecoveryTeams[g_iRecoveryCount] = str_to_num(szValue2);
-            g_bRecoveryCaptain[g_iRecoveryCount] = bool:str_to_num(szValue3);
+            // 格式: player "KEY" team captain
+            new szPlayerKey[MAX_PLAYER_KEY], szTeam[4], szRest[4];
+            parse(szValue, szPlayerKey, charsmax(szPlayerKey), szTeam, charsmax(szTeam));
+            copy(g_szRecoveryKeys[g_iRecoveryCount], charsmax(g_szRecoveryKeys[]), szPlayerKey);
+            g_iRecoveryTeams[g_iRecoveryCount] = str_to_num(szTeam);
             g_iRecoveryCount++;
         }
     }
@@ -1947,7 +1833,7 @@ check_recovery() {
         
         // ★ 如果有玩家数据，等待他们重连后再执行比赛配置
         if (g_iRecoveryCount > 0) {
-            set_task(3.0, "task_CheckAllPlayersReconnected", TASKID_RECOVERY_CHECK, _, _, "b");
+            set_task(3.0, "task_CheckAllPlayersReconnected", _, _, _, "b");
         } else {
             // 没有玩家数据，直接执行配置
             set_task(3.0, "task_ExecMatchConfig");
@@ -1998,7 +1884,7 @@ log_grouping() {
         new szName[32], szAuth[MAX_STEAMID];
         get_user_name(id, szName, charsmax(szName));
         get_user_authid(id, szAuth, charsmax(szAuth));
-        fprintf(f, "    %s (%s) score:%d%s^n", szName, szAuth, g_ePlayers[id][PAD_SCORE], g_ePlayers[id][PAD_IS_CAPTAIN] ? " [CAPTAIN]" : "");
+        fprintf(f, "    %s (%s) score:%d%s^n", szName, szAuth, calculate_player_score(id), g_ePlayers[id][PAD_IS_CAPTAIN] ? " [CAPTAIN]" : "");
     }
     fprintf(f, "  Team B (score: %d):^n", g_iTeamScore[AI_TEAM_B]);
     for (new i = 0; i < g_iTeamCount[AI_TEAM_B]; i++) {
@@ -2006,7 +1892,7 @@ log_grouping() {
         new szName[32], szAuth[MAX_STEAMID];
         get_user_name(id, szName, charsmax(szName));
         get_user_authid(id, szAuth, charsmax(szAuth));
-        fprintf(f, "    %s (%s) score:%d%s^n", szName, szAuth, g_ePlayers[id][PAD_SCORE], g_ePlayers[id][PAD_IS_CAPTAIN] ? " [CAPTAIN]" : "");
+        fprintf(f, "    %s (%s) score:%d%s^n", szName, szAuth, calculate_player_score(id), g_ePlayers[id][PAD_IS_CAPTAIN] ? " [CAPTAIN]" : "");
     }
     fprintf(f, "^n");
     
@@ -2134,20 +2020,11 @@ public cmd_substitute(id) {
         return PLUGIN_HANDLED;
     }
     
-    // 优先补到实际缺人的那支队伍
-    new iTeam = -1;
-    for (new i = 1; i <= MAX_PLAYERS; i++) {
-        if (g_bWasInMatch[i]) {
-            iTeam = g_szDisconnectTeam[i];
-            break;
-        }
-    }
-    if (iTeam == -1) {
-        iTeam = (g_iTeamCount[AI_TEAM_A] <= g_iTeamCount[AI_TEAM_B]) ? AI_TEAM_A : AI_TEAM_B;
-    }
+    // 找到退出的人的队伍（找人数少的队伍替补）
+    new iTeam = (g_iTeamCount[AI_TEAM_A] <= g_iTeamCount[AI_TEAM_B]) ? AI_TEAM_A : AI_TEAM_B;
     
     // 检查是否超人数
-    if (g_iTeamCount[iTeam] >= g_iMatchTeamSize) {
+    if (g_iTeamCount[iTeam] >= g_iTeamSize) {
         // 踢最后加入的人
         new iLastJoin = 0, iMaxTime = 0;
         for (new i = 0; i < g_iTeamCount[iTeam]; i++) {
@@ -2178,16 +2055,11 @@ public cmd_substitute(id) {
     g_ePlayers[iTarget][PAD_IN_TEAM] = true;
     g_ePlayers[iTarget][PAD_TEAM] = iTeam;
     g_ePlayers[iTarget][PAD_JOIN_TIME] = get_systime();
-    g_ePlayers[iTarget][PAD_SCORE] = calculate_player_score(iTarget);
-    if (!is_player_in_team_list(iTarget, iTeam)) {
-        g_iTeamPlayers[iTeam][g_iTeamCount[iTeam]] = iTarget;
-        g_iTeamCount[iTeam]++;
-    }
+    g_iTeamPlayers[iTeam][g_iTeamCount[iTeam]] = iTarget;
+    g_iTeamCount[iTeam]++;
     g_iSubstituteCount++;
     
     rg_set_user_team(iTarget, iTeam == AI_TEAM_A ? TEAM_TERRORIST : TEAM_CT, MODEL_AUTO);
-    clear_disconnect_slot_by_team(iTeam);
-    recalc_team_scores();
     
     // 通知相关人
     new szTeamName[8] = "A";
@@ -2415,13 +2287,20 @@ show_captain_hud() {
     }
 }
 
+// ==================== 30秒重连 ====================
+new g_szDisconnectKey[MAX_PLAYERS + 1][MAX_PLAYER_KEY];
+new g_szDisconnectTeam[MAX_PLAYERS + 1];
+new g_szDisconnectTime[MAX_PLAYERS + 1];
+new bool:g_szWasInMatch[MAX_PLAYERS + 1];
+new g_iReconnectTimer[MAX_PLAYERS + 1];
+
 public client_authorized(id) {
     new szKey[MAX_PLAYER_KEY];
     get_player_key(id, szKey, charsmax(szKey));
     
     // 检查是否有未完成的比赛断线记录
     for (new i = 1; i <= MAX_PLAYERS; i++) {
-        if (g_bWasInMatch[i] && equal(g_szDisconnectKey[i], szKey)) {
+        if (g_szWasInMatch[i] && equal(g_szDisconnectKey[i], szKey)) {
             new iElapsed = get_systime() - g_szDisconnectTime[i];
             
             if (iElapsed <= 30) {
@@ -2430,31 +2309,16 @@ public client_authorized(id) {
                 g_ePlayers[id][PAD_IN_TEAM] = true;
                 g_ePlayers[id][PAD_TEAM] = iTeam;
                 g_ePlayers[id][PAD_REGISTERED] = true;
-                g_ePlayers[id][PAD_SCORE] = calculate_player_score(id);
-                if (!is_player_in_team_list(id, iTeam)) {
-                    g_iTeamPlayers[iTeam][g_iTeamCount[iTeam]] = id;
-                    g_iTeamCount[iTeam]++;
-                }
-                rg_set_user_team(id, iTeam == AI_TEAM_A ? TEAM_TERRORIST : TEAM_CT, MODEL_AUTO);
-
-                if (g_bDisconnectCaptain[i]) {
-                    if (g_iCaptain[iTeam] > 0 && g_iCaptain[iTeam] != id) {
-                        g_ePlayers[g_iCaptain[iTeam]][PAD_IS_CAPTAIN] = false;
-                    }
-                    g_iCaptain[iTeam] = id;
-                    g_ePlayers[id][PAD_IS_CAPTAIN] = true;
-                }
+                g_iTeamPlayers[iTeam][g_iTeamCount[iTeam]] = id;
+                g_iTeamCount[iTeam]++;
                 
                 client_print(0, print_chat, "[AI Teams] %n reconnected! Welcome back.", id);
                 
                 // 清除断线记录
-                g_bWasInMatch[i] = false;
-                g_bDisconnectCaptain[i] = false;
+                g_szWasInMatch[i] = false;
                 g_szDisconnectKey[i][0] = EOS;
-                g_szDisconnectTime[i] = 0;
                 
                 remove_task(i);
-                recalc_team_scores();
             }
             
             break;
@@ -2474,12 +2338,11 @@ save_disconnect_data(id) {
     
     // 找一个空位保存
     for (new i = 1; i <= MAX_PLAYERS; i++) {
-        if (!g_bWasInMatch[i]) {
+        if (!g_szWasInMatch[i]) {
             copy(g_szDisconnectKey[i], charsmax(g_szDisconnectKey[]), szKey);
             g_szDisconnectTeam[i] = g_ePlayers[id][PAD_TEAM];
             g_szDisconnectTime[i] = get_systime();
-            g_bWasInMatch[i] = true;
-            g_bDisconnectCaptain[i] = g_ePlayers[id][PAD_IS_CAPTAIN];
+            g_szWasInMatch[i] = true;
             
             // 30秒后清除记录
             remove_task(i);
@@ -2501,21 +2364,19 @@ save_disconnect_data(id) {
 }
 
 public task_clear_reconnect(iSlot) {
-    g_bWasInMatch[iSlot] = false;
-    g_bDisconnectCaptain[iSlot] = false;
+    g_szWasInMatch[iSlot] = false;
     g_szDisconnectKey[iSlot][0] = EOS;
-    g_szDisconnectTime[iSlot] = 0;
     
     // 如果还没人替补，关闭比赛
     new bHasMissing = false;
     for (new i = 1; i <= MAX_PLAYERS; i++) {
-        if (g_bWasInMatch[i]) bHasMissing = true;
+        if (g_szWasInMatch[i]) bHasMissing = true;
     }
     
     if (!bHasMissing && g_bPaused) {
         // 检查两队是否都有足够人
         for (new t = 0; t < MAX_TEAMS; t++) {
-            if (g_iTeamCount[t] < g_iMatchTeamSize) {
+            if (g_iTeamCount[t] < g_iTeamSize) {
                 client_print(0, print_chat, "[AI Teams] No substitute after 30s. Match closed.");
                 end_match(t == AI_TEAM_A ? AI_TEAM_B : AI_TEAM_A);
                 return;
@@ -2555,8 +2416,6 @@ reset_all() {
     g_iRefreshCount = 0;
     g_iSubstituteCount = 0;
     g_iSurrenderInitiator = 0;
-    g_iMatchTeamSize = g_iTeamSize;
-    remove_task(TASKID_RECOVERY_CHECK);
     
     for (new t = 0; t < MAX_TEAMS; t++) {
         g_iTeamCount[t] = 0;
@@ -2572,7 +2431,6 @@ reset_all() {
         g_ePlayers[i][PAD_REGISTERED] = false;
         g_ePlayers[i][PAD_IN_TEAM] = false;
         g_ePlayers[i][PAD_TEAM] = 0;
-        g_ePlayers[i][PAD_SCORE] = 0;
         g_ePlayers[i][PAD_IS_CAPTAIN] = false;
         g_ePlayers[i][PAD_VOTE_MODE] = -1;
         g_ePlayers[i][PAD_VOTE_MAP] = -1;
@@ -2583,12 +2441,6 @@ reset_all() {
     g_iRecoveryReconnected = 0;
     for (new i = 0; i <= MAX_PLAYERS; i++) {
         g_szRecoveryKeys[i][0] = EOS;
-        g_bRecoveryCaptain[i] = false;
-        g_bWasInMatch[i] = false;
-        g_bDisconnectCaptain[i] = false;
-        g_szDisconnectKey[i][0] = EOS;
-        g_szDisconnectTime[i] = 0;
-        remove_task(i);
     }
 }
 

@@ -27,7 +27,7 @@ public plugin_natives() {
 }
 
 public plugin_init() {
-	register_plugin("Match: Training", "4.0.4", "LINNA");
+	register_plugin("Match: Training", "4.0.4", "OpenHNS");
 
 	RegisterSayCmd("training", "tr", "hns_training_menu");
 	
@@ -73,7 +73,8 @@ public plugin_cfg() {
 }
 
 public CmdClipMode(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -97,7 +98,8 @@ public CmdClipMode(id) {
 
 
 public CmdCheckpoint(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -117,7 +119,8 @@ public CmdCheckpoint(id) {
 }
 
 public CmdRespawn(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -129,7 +132,8 @@ public CmdRespawn(id) {
 }
 
 public CmdGoCheck(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -160,7 +164,8 @@ public CmdGoCheck(id) {
 }
 
 public CmdStuck(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -189,7 +194,8 @@ public CmdStuck(id) {
 }
 
 public CmdShowDamage(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -205,7 +211,8 @@ public CmdShowDamage(id) {
 }
 
 public CmdSaveAngles(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -237,7 +244,8 @@ public CmdSaveAngles(id) {
 // }
 
 public cmdWeapons(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -255,7 +263,8 @@ public cmdWeapons(id) {
 }
 
 public cmdScout(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -264,7 +273,8 @@ public cmdScout(id) {
 }
 
 public cmdUsp(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -273,7 +283,8 @@ public cmdUsp(id) {
 }
 
 public cmdFlash(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 	
@@ -287,7 +298,8 @@ public cmdFlash(id) {
 }
 
 public cmdAWP(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -296,7 +308,8 @@ public cmdAWP(id) {
 }
 
 public cmdM4A1(id) {
-	if (hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) {
+	if (hns_get_mode() != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
 	}
 
@@ -306,8 +319,11 @@ public cmdM4A1(id) {
 
 
 public hns_training_menu(id) {
-	if ((hns_get_mode() != MODE_TRAINING && hns_get_state() != STATE_PAUSED) || !is_user_connected(id))
+	if (hns_get_mode() != MODE_TRAINING || !is_user_connected(id))
+	{
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
 		return PLUGIN_HANDLED;
+	}
 
 	new szMsg[64];
 

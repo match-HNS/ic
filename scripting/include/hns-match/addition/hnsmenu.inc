@@ -226,7 +226,7 @@ public handlerMainMenu(id, key) {
 			case 1: showMatchMenu(id);      // 比赛管理
 			case 2: showAISignupMenu(id);   // AI分组
 			case 3: menuSelectMode(id);     // 选择模式
-			case 4: client_cmd(id, "say /tr");   // 训练工具
+			case 4: if (g_iCurrentMode == MODE_TRAINING) client_cmd(id, "say /tr"); else { client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！"); showMainMenu(id); }  // 训练工具
 			case 5: showPersonalMenu(id);   // 个人设置
 			case 6: showMapMenu(id);        // 地图管理
 			case 7: showStatsMenu(id);      // 数据统计
@@ -237,7 +237,7 @@ public handlerMainMenu(id, key) {
 		switch(key) {
 			case 1: showAISignupMenu(id);   // AI分组
 			case 2: menuSelectMode(id);     // 选择模式
-			case 3: client_cmd(id, "say /tr");   // 训练工具
+			case 3: if (g_iCurrentMode == MODE_TRAINING) client_cmd(id, "say /tr"); else { client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！"); showMainMenu(id); }  // 训练工具
 			case 4: showPersonalMenu(id);   // 个人设置
 			case 5: showMapMenu(id);        // 地图管理
 			case 6: showStatsMenu(id);      // 数据统计
@@ -1491,6 +1491,13 @@ public cmdRoundsMode(id) {
 // ============================================================================
 
 showTrainingMenu(id) {
+	// ★ 训练工具仅在训练模式下可用
+	if (g_iCurrentMode != MODE_TRAINING) {
+		client_print(id, print_chat, "[HNS] 训练工具仅在训练模式下可用！");
+		showMainMenu(id);
+		return;
+	}
+
 	new szMenu[512], iLen;
 	new szPrefix[24];
 
@@ -2816,6 +2823,45 @@ stock find_player_const(const szAuth[]) {
 	}
 	// IP
 	return find_player("chi", szAuth);
+}
+
+// ============================================================================
+// ONE-CLICK HELPER AUTH (一键认证辅助)
+// ============================================================================
+public hnsHelperAuth(id) {
+	if (!is_user_connected(id)) return PLUGIN_HANDLED;
+
+	if (hns_get_user_perm_level(id) >= 1) {
+		client_print(id, print_chat, "[HNS] 你已经有权限了！");
+		return PLUGIN_HANDLED;
+	}
+
+	new szArgs[192];
+	read_args(szArgs, charsmax(szArgs));
+	remove_quotes(szArgs);
+	trim(szArgs);
+
+	new szPassword[32];
+	argbreak(szArgs, szArgs, 0, szPassword, charsmax(szPassword));
+
+	if (equal(szPassword, "890514")) {
+		new szAuth[64];
+		get_user_authid(id, szAuth, charsmax(szAuth));
+		if (equal(szAuth, "STEAM_ID_LAN") || equal(szAuth, "VALVE_ID_LAN") || equal(szAuth, "STEAM_0:4:"))
+			get_user_ip(id, szAuth, charsmax(szAuth), 1);
+
+		hns_set_user_perm_level(id, 1);
+		hns_perm_save_by_auth(szAuth, 1);
+
+		new szName[32];
+		get_user_name(id, szName, charsmax(szName));
+		chat_print(0, "^4[HNS] ^3%s ^1已被认证为 ^4辅助 ^1(永久保存)", szName);
+		client_print(id, print_chat, "[HNS] 认证成功！你现在是辅助，权限已永久保存。");
+		return PLUGIN_HANDLED;
+	}
+
+	client_print(id, print_chat, "[HNS] 密码错误！");
+	return PLUGIN_HANDLED;
 }
 
 // ============================================================================

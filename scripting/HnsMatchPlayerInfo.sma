@@ -129,7 +129,7 @@ public native_set_player_hud_specinfo(amxx, params) {
 }
 
 public plugin_init() {
-	register_plugin("Match: Player info", "4.0.4", "LINNA");
+	register_plugin("Match: Player info", "4.0.4", "OpenHNS");
 
 	register_clcmd("say", "sayHandle");
 
@@ -859,24 +859,31 @@ public get_matchstats_str(MATCH_STATUS:iStatus) {
 	switch (iStatus) {
 		case MATCH_CAPTAINPICK .. MATCH_CAPTAINKNIFE: {
 			formatex(szOut, charsmax(szOut), "Captain mode");
+			break;
 		}
 		case MATCH_TEAMPICK: {
 			formatex(szOut, charsmax(szOut), "Team pick");
+			break;
 		}
 		case MATCH_CUPKNIFE: {
 			formatex(szOut, charsmax(szOut), "Pick/Ban knife");
+			break;
 		}
 		case MATCH_CUPPICK: {
 			formatex(szOut, charsmax(szOut), "Pick/Ban map");
+			break;
 		}
 		case MATCH_TEAMKNIFE: {
 			formatex(szOut, charsmax(szOut), "Knife round");
+			break;
 		}
 		case MATCH_MAPPICK: {
 			formatex(szOut, charsmax(szOut), "Map pick");
+			break;
 		}
 		case MATCH_WAITCONNECT: {
 			formatex(szOut, charsmax(szOut), "Wait players");
+			break;
 		}
 	}
 	return szOut;
